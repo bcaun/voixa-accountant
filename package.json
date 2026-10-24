@@ -1,0 +1,25 @@
+{
+  "name": "voixa-exchange",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tracked document exchange between Voixa's accountants and their clients",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/migrate.js",
+    "create-accountant": "node src/cli.js create-accountant",
+    "login-link": "node src/cli.js login-link",
+    "test": "node --test --test-concurrency=1 test/*.test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/lib-storage": "^3.1156.0",
+    "busboy": "^1.6.0",
+    "express": "^5.3.0",
+    "nodemailer": "^10.2.1",
+    "pg": "^8.23.1"
+  }
+}

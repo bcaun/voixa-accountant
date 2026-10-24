@@ -1,0 +1,44 @@
+# Local stack: app + PostgreSQL + MinIO (S3-compatible storage) + Mailpit (catches all email).
+#   docker compose up --build
+#   docker compose exec app node src/cli.js create-accountant --email you@voixa.es --name "Your Name"
+# App: http://localhost:3000 · Mailpit inbox: http://localhost:8025 · MinIO console: http://localhost:9001
+services:
+  db:
+    image: postgres:16
+    environment: { POSTGRES_USER: voixa, POSTGRES_PASSWORD: voixa, POSTGRES_DB: voixa }
+    volumes: [pgdata:/var/lib/postgresql/data]
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address :9001
+    environment: { MINIO_ROOT_USER: voixa, MINIO_ROOT_PASSWORD: voixa-secret }
+    ports: ["9001:9001"]
+    volumes: [miniodata:/data]
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      sh -c "until mc alias set local http://minio:9000 voixa voixa-secret; do sleep 1; done;
+             mc mb --ignore-existing --with-lock local/voixa-exchange"
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025"]
+  app:
+    build: .
+    depends_on: [db, minio-init, mailpit]
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgres://voixa:voixa@db:5432/voixa
+      APP_URL: http://localhost:3000
+      STORAGE_DRIVER: s3
+      S3_BUCKET: voixa-exchange
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: "1"
+      S3_ACCESS_KEY_ID: voixa
+      S3_SECRET_ACCESS_KEY: voixa-secret
+      MAIL_TRANSPORT: smtp
+      SMTP_URL: smtp://mailpit:1025
+      WEBHOOK_TOKEN: local-dev-token
+volumes:
+  pgdata:
+  miniodata:
