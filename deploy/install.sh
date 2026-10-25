@@ -42,8 +42,13 @@ POSTGRES_PASSWORD=$(openssl rand -hex 24)
 FIRM_NAME=Voixa Accounting
 WEBHOOK_TOKEN=$(openssl rand -hex 24)
 
-# Files on this server's disk for now. Switch to s3 (Cloudflare R2 / Backblaze B2) later, see DEPLOY.md.
+# Files on this server's disk for now. Switch to s3 (Cloudflare R2) later, see DEPLOY.md.
 STORAGE_DRIVER=fs
+# S3_BUCKET=
+# S3_REGION=auto
+# S3_ENDPOINT=https://<account id>.eu.r2.cloudflarestorage.com
+# S3_ACCESS_KEY_ID=
+# S3_SECRET_ACCESS_KEY=
 MAX_UPLOAD_MB=25
 
 # Email: "console" only writes emails to the app log. Set up Postmark, then change to postmark (DEPLOY.md).

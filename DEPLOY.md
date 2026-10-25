@@ -79,10 +79,42 @@ docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js login-
 
 ## 7. Резервные копии
 
-- **Hostinger:** VPS → Backups & Monitoring → ежедневные копии всего сервера (включить, если ещё нет).
+- **Hostinger:** VPS → Backups & Monitoring → ежедневные копии всего сервера.
 - **База:** контейнер `backup` каждые сутки сохраняет дамп базы (хранится 14 дней) в томе
   `voixa-exchange_backups`. Список: `docker run --rm -v voixa-exchange_backups:/b alpine ls -l /b`
-- **Вне сервера:** следующим шагом подключаются Cloudflare R2 или Backblaze B2 для файлов и копий.
+- **Вне сервера:** после подключения R2 (раздел 7а) контейнер `offsite` каждые 6 часов копирует
+  дампы в бакет, в папку `db-backups/`.
+
+## 7а. Файлы и копии в Cloudflare R2
+
+1. Cloudflare → **R2 Object Storage** (при первом входе — подключить R2, бесплатно до 10 ГБ).
+2. **Create bucket**: имя `pescada-exchange`, Location → **Specify jurisdiction → European Union (EU)**.
+3. В бакете → **Settings**:
+   - **Bucket lock rules → Add rule**: prefix `companies/`, retention **2190 days** (6 лет) —
+     файлы клиентов нельзя удалить или перезаписать 6 лет;
+     ещё одно правило: prefix `db-backups/`, retention **30 days**.
+   - **Object lifecycle rules → Add rule**: prefix `db-backups/`, delete objects after **90 days**.
+4. R2 → **Manage API tokens → Create API token** (Account API token): permission **Object Read & Write**,
+   **Apply to specific buckets only → pescada-exchange**. Сохраните Access Key ID, Secret Access Key
+   и адрес **EU jurisdiction** вида `https://<id>.eu.r2.cloudflarestorage.com`.
+5. На сервере в `deploy/.env` (без `#` в начале строк):
+   ```
+   STORAGE_DRIVER=s3
+   S3_BUCKET=pescada-exchange
+   S3_REGION=auto
+   S3_ENDPOINT=https://<id>.eu.r2.cloudflarestorage.com
+   S3_ACCESS_KEY_ID=...
+   S3_SECRET_ACCESS_KEY=...
+   ```
+6. Перенос уже загруженных файлов и запуск:
+   ```sh
+   cd /opt/voixa-exchange
+   bash deploy/move-files-to-r2.sh
+   docker compose -f deploy/docker-compose.prod.yml up -d
+   bash deploy/move-files-to-r2.sh      # ещё раз: файлы, загруженные во время переключения
+   docker compose -f deploy/docker-compose.prod.yml logs --tail 5 offsite
+   ```
+   Число файлов «on this server» и «in the bucket» должно совпасть, а в журнале `offsite` — `offsite copy done`.
 
 ## 8. Обновление приложения
 

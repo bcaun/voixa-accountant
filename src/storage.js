@@ -35,6 +35,10 @@ async function s3Driver(cfg) {
     endpoint: cfg.endpoint,
     forcePathStyle: cfg.forcePathStyle,
     credentials: cfg.accessKeyId ? { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey } : undefined,
+    // send and check checksums only where the S3 API requires them; R2 and some other
+    // S3-compatible stores reject the extra checksum headers newer SDKs add by default
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
   return {
     async put(key, stream, contentType) {

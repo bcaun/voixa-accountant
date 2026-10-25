@@ -65,6 +65,32 @@ services:
           sleep 86400
         done
 
+  # Copies the database dumps to the external bucket (Cloudflare R2) every 6 hours.
+  # Uses the same S3_* settings as the app; idles until they are set in deploy/.env.
+  offsite:
+    image: rclone/rclone:1.69.1
+    restart: unless-stopped
+    volumes: [backups:/backups:ro]
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-}
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      RCLONE_CONFIG_R2_ENDPOINT: ${S3_ENDPOINT:-}
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          if [ -n "$$S3_BUCKET" ] && [ -n "$$RCLONE_CONFIG_R2_ACCESS_KEY_ID" ]; then
+            rclone copy /backups "r2:$$S3_BUCKET/db-backups" --include 'voixa-*.sql.gz' && echo "offsite copy done $$(date -u)"
+          else
+            echo "offsite copy not configured: set S3_BUCKET, S3_ENDPOINT and the S3 keys in deploy/.env"
+          fi
+          sleep 21600
+        done
+
 volumes:
   pgdata:
   files:
