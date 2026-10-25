@@ -23,7 +23,7 @@ export async function sendLoginLink(client, user, { invitedBy, companyName, comp
        `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
     : [`Use the button below to sign in. The link works once and expires in ${config.loginLinkMinutes} minutes.`,
        'If you did not ask for this, ignore this email.'];
-  const { html, text } = renderEmail({ heading, lines, button: { label: 'Sign in', url } });
+  const { html, text } = renderEmail({ heading, lines, button: { label: 'Sign in', url }, footer: `${config.firmName} · Voixa Exchange. Documents you exchange there, and every action on them, are recorded in your workspace log.` });
   await queueEmail(client, { companyId, toUserId: user.id, toEmail: user.email, kind: invitedBy ? 'invite' : 'login', subject: heading, html, text });
 }
 
