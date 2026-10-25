@@ -28,6 +28,15 @@ nobody can say "I never got it", "you never sent it" or "it went to spam".
   and the chain can be verified at any time. Every file is fingerprinted with SHA-256 by the server.
 - **Exports.** The log downloads as CSV, and a printable tracking report (whole workspace or one
   item) can be printed or saved as PDF. Exports are themselves logged.
+- **Bank statement and invoice recognition.** Files uploaded as *Bank statement* or *Invoice* are read
+  automatically. Statements: Norma 43 (AEB 43), camt.053 XML and bank CSV exports are parsed exactly by
+  code; PDFs and photos are read by Claude. For each transaction the app records date, amount, currency,
+  counterparty (name, NIF, IBAN), the payment text, and any invoice and contract numbers in it. Invoices
+  (read by Claude) give number, issuer, recipient, dates, net, tax and total, and whether the invoice was
+  issued or received by the client company. Payments are then matched to the client's invoices by
+  invoice number, amount, counterparty and date; the accountant confirms or rejects each match. Every
+  recognition, suggested match and decision is written to the log. An accountant can re-read any file
+  as a statement or an invoice.
 - **Passwordless sign-in.** People sign in with a one-time link sent to their email.
 
 ## Run it locally
@@ -77,6 +86,10 @@ exports, the append-only guard and detection of a tampered log.
 - **Email:** `MAIL_TRANSPORT=postmark` with a sending domain that has SPF, DKIM and DMARC set up.
   In Postmark, add a webhook to `https://<host>/webhooks/postmark?token=<WEBHOOK_TOKEN>` for
   Delivery, Bounce, Spam Complaint and Open events.
+- **AI reading:** set `ANTHROPIC_API_KEY` to read PDF and photo statements and invoices. Files are sent
+  to the Anthropic API; cover this in the client agreement and your data-processing records (GDPR).
+  Without a key, Norma 43, camt.053 and CSV statements are still read, and other files are marked as
+  not readable with a note explaining what to upload instead.
 - **Accountants** are created from the command line (`npm run create-accountant`). Clients are
   invited from the app.
 
@@ -92,6 +105,7 @@ src/mailer.js        email queue, transports (console, SMTP, Postmark), delivery
 src/scheduler.js     automatic reminders and recurring deadlines
 src/export.js        CSV and printable tracking report
 src/storage.js       file storage (local disk or S3-compatible)
+src/recognition/     statement parsers (Norma 43, camt.053, CSV), AI reader, references, payment matching
 src/sql/             database schema
 public/              web client (plain HTML, CSS and JavaScript, no build step)
 test/                end-to-end tests

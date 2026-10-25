@@ -33,6 +33,13 @@ export const config = {
     webhookToken: env.WEBHOOK_TOKEN || '',
   },
 
+  recognition: {
+    // reading PDFs and scans needs ANTHROPIC_API_KEY; Norma 43, camt.053 and CSV are parsed without it
+    ai: env.RECOGNITION_AI !== 'off',
+    model: env.RECOGNITION_MODEL || 'claude-opus-5-5',
+    maxAiFileMb: num(env.RECOGNITION_MAX_AI_MB, 20),
+  },
+
   scheduler: {
     enabled: env.SCHEDULER !== 'off',
     intervalMinutes: num(env.SCHEDULER_INTERVAL_MIN, 10),

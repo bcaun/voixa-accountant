@@ -3,6 +3,8 @@ import { config } from './config.js';
 
 // bigint columns (seq, size) fit comfortably in a JS number here
 pg.types.setTypeParser(20, (v) => Number(v));
+// calendar dates stay 'YYYY-MM-DD' strings, never shifted by the server's time zone
+pg.types.setTypeParser(1082, (v) => v);
 
 export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
 

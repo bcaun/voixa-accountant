@@ -6,6 +6,7 @@ import { appendEvent } from './ledger.js';
 import { queueEmail, renderEmail } from './mailer.js';
 import { HttpError, actorOf } from './auth.js';
 import { fmtDay, fmtTime } from './dates.js';
+import { enqueueRecognition } from './recognition/recognize.js';
 
 export const SYSTEM = { type: 'system', id: null, name: 'Voixa Exchange' };
 export const recipientSide = (kind) => (kind === 'doc' ? 'accountant' : 'client');
@@ -120,6 +121,7 @@ export async function createDocument(c, { user, company, file, category, period,
   }
   const it = await insertItem(c, { company_id: company.id, kind: 'doc', title: cleanTitle(file.name), category, period, note, for_request: request?.id, created_by: user.id });
   const v = await insertVersion(c, it, file, user);
+  await enqueueRecognition(c, it, v);
   await appendEvent(c, { companyId: company.id, itemId: it.id, versionId: v.id, actor: actorOf(user), type: 'uploaded',
     text: `${actorOf(user).name} uploaded “${file.name}” (${fmtSize(file.size)})`,
     data: { version: 1, file: file.name, size: file.size, sha256: file.sha256 } });
@@ -196,6 +198,7 @@ export async function replaceVersion(c, { user, company, item, file, reason }) {
   if (!reason) throw new HttpError(400, 'Say why the file is being replaced. The reason is kept in the log.');
   const { rows: [prev] } = await c.query('select * from versions where item_id = $1 order by version desc limit 1', [item.id]);
   const v = await insertVersion(c, item, file, user, reason);
+  if (item.kind === 'doc') await enqueueRecognition(c, item, v);
   await appendEvent(c, { companyId: company.id, itemId: item.id, versionId: v.id, actor: actorOf(user), type: 'replaced',
     text: `${actorOf(user).name} replaced version ${prev.version} with “${file.name}” (${fmtSize(file.size)}). Reason: ${reason}`,
     data: { version: v.version, file: file.name, size: file.size, sha256: file.sha256, previous_version: prev.version, previous_sha256: prev.sha256, reason } });

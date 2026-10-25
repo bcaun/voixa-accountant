@@ -10,6 +10,10 @@ import { parseDay } from '../dates.js';
 import * as items from '../items.js';
 import * as companies from '../companies.js';
 import { exportCsv, exportReport } from '../export.js';
+import { processJobs, enqueueRecognition } from '../recognition/recognize.js';
+import { decideMatch } from '../recognition/matching.js';
+
+const background = () => processJobs().catch((err) => console.error('recognition', err));
 
 export const api = express.Router();
 const json = express.json({ limit: '100kb' });
@@ -199,6 +203,7 @@ api.post('/companies/:id/documents', async (req, res) => {
     throw err;
   }
   flushEmails().catch((err) => console.error('mail', err));
+  background();
   res.status(201).json({ sent: files.length });
 });
 
@@ -258,6 +263,7 @@ api.post('/items/:id/versions', async (req, res) => {
     throw err;
   }
   flushEmails().catch((err) => console.error('mail', err));
+  background();
   res.status(201).json({ ok: true });
 });
 
@@ -333,4 +339,52 @@ api.get('/companies/:id/report', async (req, res) => {
   await logExport(req.user, company, itemId ? 'a tracking report for one item' : 'the workspace tracking report');
   res.set({ 'Content-Type': 'text/html; charset=utf-8' });
   res.send(await exportReport(company, { itemId, by: req.user }));
+});
+
+/* ---------- recognised bank data and payment matches ---------- */
+
+const num2 = (v) => (v == null ? null : Number(v));
+
+api.get('/companies/:id/recognition', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const cur = 'join items i on i.id = e.item_id join versions v on v.id = e.version_id and v.version = i.version';
+  const [ex, txs, invs, matches, pending] = await Promise.all([
+    query(`select e.item_id, e.version_id, e.kind, e.status, e.method, e.model, e.summary, e.error, e.created_at from extractions e ${cur} where e.company_id = $1`, [company.id]),
+    query(`select t.* from bank_transactions t join extractions e on e.id = t.extraction_id ${cur} where t.company_id = $1 order by t.booking_date nulls last, t.line`, [company.id]),
+    query(`select d.* from invoice_data d join extractions e on e.id = d.extraction_id ${cur} where d.company_id = $1`, [company.id]),
+    query(`select id, transaction_id, invoice_item_id, score, reasons, status, decided_at from payment_matches where company_id = $1 and status <> 'rejected'`, [company.id]),
+    query(`select distinct j.item_id from jobs j join items i on i.id = j.item_id where i.company_id = $1 and j.status in ('queued','running')`, [company.id]),
+  ]);
+  res.json({
+    extractions: ex.rows,
+    transactions: txs.rows.map(({ extraction_id, company_id, ...t }) => ({ ...t, amount: num2(t.amount) })),
+    invoices: invs.rows.map(({ extraction_id, company_id, ...d }) => ({ ...d, net_amount: num2(d.net_amount), tax_amount: num2(d.tax_amount), total_amount: num2(d.total_amount) })),
+    matches: matches.rows,
+    pending: pending.rows.map((r) => r.item_id),
+  });
+});
+
+for (const [path, confirm] of [['confirm', true], ['reject', false]]) {
+  api.post(`/companies/:id/matches/:mid/${path}`, async (req, res) => {
+    if (!isUuid(req.params.mid)) throw new HttpError(404, 'That match does not exist.');
+    await tx(async (c) => {
+      const company = await companyFor(req.user, req.params.id, c);
+      await decideMatch(c, { user: req.user, company, matchId: req.params.mid, confirm });
+    });
+    res.json({ ok: true });
+  });
+}
+
+// Read a file again, or read it as a different type ("statement" or "invoice")
+api.post('/items/:id/recognise', json, async (req, res) => {
+  const as = req.body?.as;
+  if (!['statement', 'invoice'].includes(as)) throw new HttpError(400, 'Choose whether to read the file as a bank statement or an invoice.');
+  await tx(async (c) => {
+    const { item } = await itemFor(req.user, req.params.id, c);
+    if (item.kind !== 'doc') throw new HttpError(400, 'Only documents from the client are read automatically.');
+    const { rows: [v] } = await c.query('select * from versions where item_id = $1 and version = $2', [item.id, item.version]);
+    await enqueueRecognition(c, item, v, as);
+  });
+  background();
+  res.status(202).json({ ok: true });
 });

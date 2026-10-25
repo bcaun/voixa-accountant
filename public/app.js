@@ -81,8 +81,12 @@ async function refresh() {
     if (S.me.role === 'accountant') S.overview = await api('/overview');
     if (S.route.c) {
       if (S.wsId !== S.route.c) { S.ws = null; S.verify = null; }
-      S.ws = await api(`/companies/${S.route.c}`);
+      const [ws, rec] = await Promise.all([api(`/companies/${S.route.c}`), api(`/companies/${S.route.c}/recognition`)]);
+      S.ws = ws; S.rec = rec;
       S.wsId = S.route.c;
+      // while files are being read, check back soon
+      clearTimeout(S.recTimer);
+      if (rec.pending.length) S.recTimer = setTimeout(refresh, 4000);
     } else { S.ws = null; S.wsId = null; }
   } catch (err) {
     if (err.status === 404) { toast('That workspace is not available to you.'); return go(null); }
@@ -151,6 +155,7 @@ function row(it, opts = {}) {
   if (it.status.sent_at) bits.push(`${it.kind === 'request' ? 'requested' : 'sent'} ${ago(it.status.sent_at)}`);
   else if (it.due_at) bits.push(`due ${fmtDate(it.due_at)}`);
   const dn = deadlineNote(it); if (dn) bits.push(dn);
+  const paid = paymentNote(it.id); if (paid) bits.push(paid);
   const cid = it.company_id || S.route.c;
   return `<button class="row" data-act="item" data-c="${cid}" data-id="${it.id}"><span class="ico ${col}" aria-hidden="true">${code}</span><span class="rm"><span class="rt">${esc(it.title)}</span><span class="rs">${bits.join(' · ')}</span></span>${compact ? '' : tracker(it)}<span class="pill ${tone}">${label}</span></button>`;
 }
@@ -266,12 +271,14 @@ function renderClient() {
   const t = tabs(`c:${c.id}`, [
     { id: 'sent', label: 'Sent to accountant', count: docs.length },
     { id: 'recv', label: 'From accountant', count: inbound.length },
+    { id: 'bank', label: 'Bank & invoices', count: S.rec?.transactions.length || null },
     { id: 'recurring', label: 'Recurring deadlines', count: w.obligations.filter((o) => o.active).length },
     { id: 'people', label: 'People', count: w.members.length },
     { id: 'log', label: 'Activity log' }]);
   let body = '';
   if (t.cur === 'sent') body = list(docs, 'You have not sent any documents yet. Use the form above to send the first one.');
   else if (t.cur === 'recv') body = list(inbound, `Reports and requests from ${esc(w.firm)} will appear here.`);
+  else if (t.cur === 'bank') body = bankView();
   else if (t.cur === 'recurring') body = recurringView();
   else if (t.cur === 'people') body = peopleView();
   else body = ledgerView();
@@ -335,14 +342,114 @@ function renderAcc() {
   const t = tabs(`acc:${c.id}`, [
     { id: 'in', label: 'From client', count: docs.length },
     { id: 'out', label: 'Sent to client', count: out.length },
+    { id: 'bank', label: 'Bank & invoices', count: S.rec?.transactions.length || null },
     { id: 'recurring', label: 'Recurring deadlines', count: w.obligations.filter((o) => o.active).length },
     { id: 'people', label: 'People', count: w.members.length },
     { id: 'log', label: 'Activity log' }]);
   const body = t.cur === 'in' ? list(docs, 'This client has not sent any documents yet.')
     : t.cur === 'out' ? list(out, 'You have not sent this client any reports or requests yet.')
-      : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
+      : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
   m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no}${c.nif ? ` · NIF ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions"><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body;
+}
+
+/* ---------- recognised bank statements and invoices ---------- */
+const money = (n, ccy) => (n == null ? '—' : `${Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${ccy || ''}`.trim());
+const recFor = (itemId) => S.rec?.extractions.find((e) => e.item_id === itemId);
+const invoiceFor = (itemId) => S.rec?.invoices.find((i) => i.item_id === itemId);
+const matchesForTx = (txId) => (S.rec?.matches || []).filter((m) => m.transaction_id === txId);
+const matchesForInvoice = (itemId) => (S.rec?.matches || []).filter((m) => m.invoice_item_id === itemId);
+const METHOD = { norma43: 'Norma 43 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading' };
+
+function paymentNote(itemId) {
+  const ms = matchesForInvoice(itemId);
+  if (ms.some((m) => m.status === 'confirmed')) return '<span class="ontime">Paid</span>';
+  if (ms.length) return 'Payment found, not confirmed';
+  return '';
+}
+
+function refChips(t) {
+  return [...t.invoice_refs.map((r) => `<span class="chip ref" title="Invoice number in the payment">INV ${esc(r)}</span>`),
+    ...t.contract_refs.map((r) => `<span class="chip ref" title="Contract number in the payment">CTR ${esc(r)}</span>`)].join('');
+}
+
+function matchCell(t) {
+  const ms = matchesForTx(t.id);
+  if (!ms.length) return '<span class="sub">No invoice found</span>';
+  return ms.map((m) => {
+    const inv = invoiceFor(m.invoice_item_id), it = item(m.invoice_item_id);
+    const label = esc(inv?.invoice_number || it?.title || 'Invoice');
+    const link = `<a href="#/c/${S.route.c}/i/${m.invoice_item_id}" style="color:var(--blue)">${label}</a>`;
+    if (m.status === 'confirmed') return `<div class="match ok">${link} · confirmed</div>`;
+    const btns = S.me.role === 'accountant'
+      ? `<span class="tbl-actions"><button class="btn small" data-act="match" data-decision="confirm" data-id="${m.id}">Confirm</button><button class="btn small" data-act="match" data-decision="reject" data-id="${m.id}">Not this</button></span>` : '';
+    return `<div class="match"><div>${link} · ${m.score}% match</div><div class="sub" style="font-size:12px">${esc(m.reasons.join(', '))}</div>${btns}</div>`;
+  }).join('');
+}
+
+function txTable(txs) {
+  if (!txs.length) return '<div class="empty">No transactions.</div>';
+  return `<div class="tbl-wrap"><table class="tx"><thead><tr><th>Date</th><th>Counterparty</th><th>Payment text and references</th><th style="text-align:right">Amount</th><th>Invoice</th></tr></thead><tbody>${txs.map((t) => `<tr>
+    <td class="mono num" style="white-space:nowrap">${t.booking_date || '—'}</td>
+    <td style="min-width:160px"><b style="color:var(--ink);font-weight:500">${esc(t.counterparty_name || '—')}</b>${t.counterparty_tax_id ? `<div class="mono sub">NIF ${esc(t.counterparty_tax_id)}</div>` : ''}${t.counterparty_iban ? `<div class="mono sub">${esc(t.counterparty_iban)}</div>` : ''}</td>
+    <td style="min-width:260px">${esc(t.purpose)}<div class="chips">${refChips(t)}</div></td>
+    <td class="num mono amt ${t.amount < 0 ? 'out' : 'in'}">${t.amount > 0 ? '+' : ''}${money(t.amount, t.currency)}</td>
+    <td style="min-width:200px">${matchCell(t)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function statementSummary(e) {
+  const x = e.summary;
+  const bits = [x.bank_name, x.iban || x.account_number, x.currency, x.period_start && `${x.period_start} to ${x.period_end}`].filter(Boolean).map(esc);
+  const bal = x.opening_balance != null || x.closing_balance != null ? ` · opening ${money(x.opening_balance, x.currency)}, closing ${money(x.closing_balance, x.currency)}` : '';
+  const check = x.balance_check ? (x.balance_check === 'ok' ? ' · <span class="ontime">balances add up</span>' : ` · <span class="late">balances ${esc(x.balance_check)}</span>`) : '';
+  return `${bits.join(' · ')}${bal}${check}<br>${x.count} transactions: ${money(x.total_in, x.currency)} in, ${money(-x.total_out, x.currency)} out · read from ${METHOD[e.method] || e.method}`;
+}
+
+function bankView() {
+  const r = S.rec;
+  if (!r) return '<p class="loading">Loading…</p>';
+  const statements = r.extractions.filter((e) => e.kind === 'statement');
+  const f = S.tab.bankFilter || 'all';
+  const status = (t) => { const ms = matchesForTx(t.id); return ms.some((m) => m.status === 'confirmed') ? 'confirmed' : ms.length ? 'suggested' : 'none'; };
+  const shown = r.transactions.filter((t) => f === 'all' || status(t) === f || (f === 'refs' && (t.invoice_refs.length || t.contract_refs.length)));
+  const count = (k) => r.transactions.filter((t) => status(t) === k).length;
+  const stItems = statements.map((e) => { const it = item(e.item_id); return `<div class="ob"><span class="ico sky" aria-hidden="true">BNK</span><span class="rm"><span class="rt"><a href="#/c/${S.route.c}/i/${e.item_id}" style="color:inherit">${esc(it?.title || 'Statement')}</a></span><span class="rs">${e.status === 'done' ? statementSummary(e) : esc(e.error || '')}</span></span><span class="pill ${e.status === 'done' ? 'ok' : 'bad'}">${e.status === 'done' ? 'Read' : 'Not read'}</span></div>`; }).join('');
+  const invs = r.invoices.length;
+  return `<p class="note">Bank statements and invoices are read automatically when they are uploaded. Norma 43, camt.053 and CSV files are read exactly; PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; ${S.me.role === 'accountant' ? 'you confirm each match' : 'your accountant confirms each match'}.</p>
+    ${r.pending.length ? `<div class="chain"><p>Reading ${r.pending.length} file${r.pending.length > 1 ? 's' : ''}…</p></div>` : ''}
+    <div class="stack" style="gap:10px">${stItems || '<div class="empty">No bank statements read yet. Upload one as “Bank statement”: Norma 43 (AEB 43), camt.053, CSV or PDF.</div>'}</div>
+    <div class="section-h" style="margin-top:22px"><h3>Transactions</h3><div class="presets">
+      ${[['all', `All ${r.transactions.length}`], ['none', `No invoice ${count('none')}`], ['suggested', `To confirm ${count('suggested')}`], ['confirmed', `Confirmed ${count('confirmed')}`], ['refs', 'With references']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" data-act="bank-filter" data-f="${k}">${l}</button>`).join('')}
+    </div></div>
+    <p class="sub" style="margin-bottom:10px">${invs} invoice${invs === 1 ? '' : 's'} read so far are used for matching.</p>
+    ${txTable(shown)}`;
+}
+
+function recognisedSection(it) {
+  if (it.kind !== 'doc' || !S.rec) return '';
+  const e = recFor(it.id), pending = S.rec.pending.includes(it.id), acc = S.me.role === 'accountant';
+  const rerun = acc ? `<div class="tbl-actions"><button class="btn small" data-act="recognise" data-as="statement">Read as bank statement</button><button class="btn small" data-act="recognise" data-as="invoice">Read as invoice</button></div>` : '';
+  if (pending) return `<section class="receipt"><h3>Recognised data</h3><p class="sub">Reading the file…</p></section>`;
+  if (!e) return acc ? `<section class="receipt"><h3>Recognised data</h3><p class="sub">This file was not read automatically because it is not marked as a bank statement or an invoice.</p>${rerun}</section>` : '';
+  if (e.status !== 'done') return `<section class="receipt"><h3>Recognised data</h3><p class="late">${esc(e.error)}</p>${rerun}</section>`;
+  if (e.kind === 'statement') {
+    const txs = S.rec.transactions.filter((t) => t.item_id === it.id);
+    return `<section style="display:grid;gap:10px"><h3>Recognised bank statement</h3><p class="sub" style="font-size:13px">${statementSummary(e)}</p>
+      ${txTable(txs.slice(0, 40))}${txs.length > 40 ? `<p class="sub">Showing 40 of ${txs.length}. See all under Bank & invoices.</p>` : ''}${rerun}</section>`;
+  }
+  const d = invoiceFor(it.id) || e.summary;
+  const ms = matchesForInvoice(it.id);
+  const dir = { issued: 'Sales invoice (issued by this company)', received: 'Purchase invoice (received by this company)', unknown: 'Invoice' }[d.direction] || 'Invoice';
+  const rows = [['Type', dir], ['Number', d.invoice_number], ['Issuer', [d.issuer_name, d.issuer_tax_id].filter(Boolean).join(' · ')], ['Recipient', [d.recipient_name, d.recipient_tax_id].filter(Boolean).join(' · ')],
+    ['Issued', d.issue_date], ['Due', d.due_date], ['Net', d.net_amount != null ? money(d.net_amount, d.currency) : null], ['Tax', d.tax_amount != null ? money(d.tax_amount, d.currency) : null],
+    ['Total', d.total_amount != null ? money(d.total_amount, d.currency) : null], ['Contract', d.contract_number]].filter(([, v]) => v);
+  const pays = ms.map((m) => { const t = S.rec.transactions.find((x) => x.id === m.transaction_id); const st = t && item(t.item_id);
+    return t ? `<div class="match${m.status === 'confirmed' ? ' ok' : ''}"><div>${money(t.amount, t.currency)} on ${t.booking_date || '—'} · ${esc(t.counterparty_name || '')} · <a href="#/c/${S.route.c}/i/${t.item_id}" style="color:var(--blue)">${esc(st?.ref || 'statement')}</a>, line ${t.line}</div>
+      <div class="sub" style="font-size:12px">${m.status === 'confirmed' ? 'Confirmed' : `${m.score}% match: ${esc(m.reasons.join(', '))}`}</div>
+      ${m.status === 'suggested' && acc ? `<span class="tbl-actions"><button class="btn small" data-act="match" data-decision="confirm" data-id="${m.id}">Confirm</button><button class="btn small" data-act="match" data-decision="reject" data-id="${m.id}">Not this</button></span>` : ''}</div>` : ''; }).join('');
+  return `<section style="display:grid;gap:10px"><h3>Recognised invoice</h3><dl class="meta">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+    <p class="sub" style="font-size:12px">Read from ${METHOD[e.method] || e.method}. Check the figures against the file.</p>
+    <h3>Payments</h3>${pays || '<p class="sub">No matching payment in the uploaded bank statements yet.</p>'}${rerun}</section>`;
 }
 
 /* ---------- recurring deadlines ---------- */
@@ -460,6 +567,7 @@ function renderDrawer() {
     ${it.versions.length ? `<section style="display:grid;gap:10px"><h3>Files</h3><ul class="versions">${it.versions.slice().reverse().map((v) => `<li class="${v === cur ? 'cur' : ''}"><div><b style="color:var(--ink)">v${v.version} · ${esc(v.file_name)}</b> · ${fmtSize(v.size)} ${v === cur ? '<span class="pill info" style="margin-left:6px">Current</span>' : ''}</div>
       <div class="sub">Uploaded ${fmt(v.uploaded_at)}${v.uploaded_by ? ` by ${esc(v.uploaded_by)}` : ''}${v.replace_reason ? `. Reason for replacing: ${esc(v.replace_reason)}` : ''}</div>
       <div class="mono">SHA-256 ${v.sha256}</div>${v !== cur ? `<div><a href="/api/items/${it.id}/file?v=${v.version}" target="_blank" rel="noopener" style="color:var(--blue)" data-act="opened-file">Open version ${v.version}</a></div>` : ''}</li>`).join('')}</ul></section>` : ''}
+    ${recognisedSection(it)}
     ${emails.length ? `<section class="mail"><h3>Email notifications</h3>${emails.map((e) => `<div class="${['bounced', 'spam_complaint', 'failed'].includes(e.status) ? 'bad' : e.status === 'delivered' || e.status === 'opened' ? 'ok' : ''}">${esc(e.to_email)}: ${mailState[e.status] || e.status} · ${fmtShort(e.updated_at)}</div>`).join('')}</section>` : ''}
     <section class="receipt"><div class="section-h" style="margin:0"><h3>Tracking report</h3><a class="btn small" href="/api/companies/${w.company.id}/report?item=${it.id}" target="_blank" rel="noopener">Open printable report</a></div>
       <p class="sub" style="font-size:12.5px">A one-page record of this item: every step with its time, file fingerprints and the log verification. Print it or save it as PDF.</p></section>
@@ -630,6 +738,9 @@ document.addEventListener('click', async (e) => {
       if (!msg) { $('#dr-note').focus(); break; }
       $('#dr-note').value = ''; await act(`/items/${it.id}/comments`, { message: msg }, 'Note added to the record.'); break;
     }
+    case 'match': await act(`/companies/${S.route.c}/matches/${b.dataset.id}/${b.dataset.decision}`, {}, b.dataset.decision === 'confirm' ? 'Payment confirmed for this invoice.' : 'Marked as not related.'); break;
+    case 'recognise': await act(`/items/${it.id}/recognise`, { as: b.dataset.as }, 'Reading the file. Results appear in a few seconds.'); break;
+    case 'bank-filter': S.tab.bankFilter = b.dataset.f; renderData(); break;
     case 'remind': await act(`/items/${it.id}/remind`, {}, 'Reminder sent.'); break;
     case 'replace': replaceModal(it); break;
     case 'send-expected': reportModal(it); break;

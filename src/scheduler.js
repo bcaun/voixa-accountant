@@ -8,6 +8,7 @@ import { flushEmails } from './mailer.js';
 import { generateDue } from './companies.js';
 import { SYSTEM, notify, recipientSide, recompute, reminderLine } from './items.js';
 import { fmtDay } from './dates.js';
+import { processJobs } from './recognition/recognize.js';
 
 const LOCK_ID = 774411;
 
@@ -19,6 +20,7 @@ export async function runScheduler(now = new Date()) {
     try {
       const generated = await generateObligations(now);
       const reminded = await autoReminders(now);
+      await processJobs();
       await flushEmails();
       return { generated, reminded };
     } finally {

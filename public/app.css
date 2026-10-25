@@ -269,3 +269,12 @@ a.btn{text-decoration:none}
 .ob .rs{white-space:normal}
 .list.compact .row{grid-template-columns:44px minmax(0,1fr) auto}
 @media (max-width:1060px){.list.compact .row .pill{grid-column:2}}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.chip.ref{cursor:default;font:500 11px/1.4 var(--f-mono);padding:1px 7px;background:var(--blue-soft);border-color:transparent;color:var(--blue)}
+.chip.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+table.tx td{font-size:13px}
+.amt{text-align:right;white-space:nowrap;font-weight:500}
+.amt.in{color:var(--ok)} .amt.out{color:var(--ink)}
+.match{display:grid;gap:4px}
+.match.ok{color:var(--ok)}
+.drawer table.tx{font-size:12px}
