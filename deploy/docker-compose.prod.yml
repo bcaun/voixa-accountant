@@ -1,0 +1,73 @@
+# Production stack for one server: app + PostgreSQL + Caddy (HTTPS) + nightly database dumps.
+# Settings come from deploy/.env (created by deploy/install.sh).
+#   docker compose -f deploy/docker-compose.prod.yml up -d --build
+name: voixa-exchange
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: voixa
+      POSTGRES_DB: voixa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voixa -d voixa"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: ..
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://voixa:${POSTGRES_PASSWORD}@db:5432/voixa
+      APP_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+      TRUST_PROXY: "1"
+      PORT: "3000"
+      STORAGE_DIR: /app/data/files
+    volumes: [files:/app/data/files]
+    expose: ["3000"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Nightly database dump, kept 14 days in the "backups" volume (/var/lib/docker/volumes/voixa-exchange_backups).
+  # deploy/backup-offsite.sh copies dumps and files to external storage.
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [backups:/backups]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/backups/voixa-$$(date +%Y%m%d-%H%M).sql.gz
+          pg_dump -h db -U voixa voixa | gzip > "$$f.tmp" && mv "$$f.tmp" "$$f" && echo "backup $$f"
+          find /backups -name 'voixa-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+
+volumes:
+  pgdata:
+  files:
+  backups:
+  caddy_data:
+  caddy_config:

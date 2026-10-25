@@ -1,0 +1,11 @@
+# HTTPS certificates are issued and renewed automatically by Let's Encrypt.
+{$DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 30MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+	reverse_proxy app:3000
+}
