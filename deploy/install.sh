@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # First-time setup of Voixa Exchange on a fresh Ubuntu 24.04 server. Run as root from the repository:
-#   bash deploy/install.sh exchange.voixa.es you@voixa.es "Your Name"
+#   bash deploy/install.sh app.pescada.io you@voixa.es "Your Name"
 # Safe to run again: it keeps an existing deploy/.env and only (re)starts the containers.
 set -euo pipefail
 
@@ -29,6 +29,10 @@ ufw allow 443/tcp
 ufw allow 443/udp
 ufw --force enable
 
+# app.pescada.io -> mail from pescada.io; pescada.io -> pescada.io
+MAIL_DOMAIN="$DOMAIN"
+if [ "$(echo "$DOMAIN" | tr -cd '.' | wc -c)" -ge 2 ]; then MAIL_DOMAIN="${DOMAIN#*.}"; fi
+
 ENV_FILE="$ROOT/deploy/.env"
 if [ ! -f "$ENV_FILE" ]; then
   echo "==> Creating $ENV_FILE with new secrets"
@@ -44,7 +48,7 @@ MAX_UPLOAD_MB=25
 
 # Email: "console" only writes emails to the app log. Set up Postmark, then change to postmark (DEPLOY.md).
 MAIL_TRANSPORT=console
-MAIL_FROM=Voixa Exchange <exchange@voixa.es>
+MAIL_FROM=Voixa Exchange <notifications@$MAIL_DOMAIN>
 # POSTMARK_TOKEN=
 
 # AI reading of PDFs and photos. Without a key, Norma 43 / camt.053 / CSV statements are still read.

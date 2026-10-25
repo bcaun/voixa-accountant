@@ -5,14 +5,14 @@
 
 ## 1. Адрес сайта (DNS)
 
-Выберите адрес, например `exchange.voixa.es`. Там, где управляются DNS домена `voixa.es`,
-добавьте запись:
+Адрес приложения: `app.pescada.io`. В Cloudflare → домен `pescada.io` → **DNS → Records → Add record**:
 
-| Тип | Имя | Значение | TTL |
-|---|---|---|---|
-| A | `exchange` | IP сервера (Hostinger → VPS → Overview → IPv4) | 300 |
+| Type | Name | IPv4 address | Proxy status | TTL |
+|---|---|---|---|---|
+| A | `app` | IP сервера (Hostinger → VPS → Overview → IPv4) | **DNS only** (серое облако) | Auto |
 
-Проверка с Mac: `dig +short exchange.voixa.es` должен показать IP сервера. Без этого HTTPS не включится.
+«DNS only» нужен, чтобы сервер сам получил HTTPS-сертификат. Проверка с Mac:
+`dig +short app.pescada.io` должен показать IP сервера. Без этого HTTPS не включится.
 
 ## 2. Вход на сервер
 
@@ -40,7 +40,7 @@ Add deploy key**: название `voixa-server`, вставить ключ, г
 ```sh
 git clone -b claude/server-prototype git@github.com:bcaun/voixa-accountant.git /opt/voixa-exchange
 cd /opt/voixa-exchange
-bash deploy/install.sh exchange.voixa.es ваш@email "Ваше Имя"
+bash deploy/install.sh app.pescada.io ваш@email "Ваше Имя"
 ```
 
 Скрипт обновит систему, включит файрвол (открыты только SSH, 80 и 443), установит Docker, создаст
@@ -59,16 +59,16 @@ docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js login-
 Пока в `deploy/.env` стоит `MAIL_TRANSPORT=console`, письма (приглашения клиентам, уведомления)
 не уходят, а пишутся в журнал приложения: `docker compose -f deploy/docker-compose.prod.yml logs app`.
 
-1. Зарегистрируйтесь на postmarkapp.com, создайте Server, подтвердите домен `voixa.es`
-   (Postmark покажет DKIM- и Return-Path-записи для DNS).
+1. Зарегистрируйтесь на postmarkapp.com, создайте Server, подтвердите домен `pescada.io`
+   (Postmark покажет DKIM- и Return-Path-записи — добавьте их в Cloudflare DNS, тоже «DNS only»).
 2. В `deploy/.env`:
    ```
    MAIL_TRANSPORT=postmark
    POSTMARK_TOKEN=<Server API token>
-   MAIL_FROM=Voixa Exchange <exchange@voixa.es>
+   MAIL_FROM=Voixa Exchange <notifications@pescada.io>
    ```
 3. В Postmark → Server → Webhooks добавьте адрес
-   `https://exchange.voixa.es/webhooks/postmark?token=<WEBHOOK_TOKEN из deploy/.env>`
+   `https://app.pescada.io/webhooks/postmark?token=<WEBHOOK_TOKEN из deploy/.env>`
    с событиями Delivery, Bounce, Spam Complaint, Open.
 4. Перезапуск: `docker compose -f deploy/docker-compose.prod.yml up -d`
 
