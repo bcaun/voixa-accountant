@@ -22,6 +22,7 @@ const { createLoginLink } = await import('../src/auth.js');
 const { sentMail, flushEmails } = await import('../src/mailer.js');
 const { processJobs } = await import('../src/recognition/recognize.js');
 const { setAiReader } = await import('../src/recognition/ai.js');
+const { config } = await import('../src/config.js');
 
 const INVOICES = {
   'Makro_F-2026-08812.pdf': { invoice_number: 'F-2026-08812', issue_date: '2026-09-01', due_date: '2026-09-30', issuer_name: 'Makro Autoservicio Mayorista SA',
@@ -33,7 +34,9 @@ const aiCalls = [];
 setAiReader(async (kind, file) => {
   aiCalls.push([kind, file.type, file.name]);
   const inv = INVOICES[file.name];
-  return { model: 'stub', data: inv ? { is_invoice: true, contract_number: null, ...inv } : { is_invoice: false } };
+  // usage as the API reports it: 5,000 input and 1,000 output tokens on Opus 5.5 = $0.02 + $0.02
+  return { model: 'claude-opus-5-5', usage: { input_tokens: 5000, output_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    data: inv ? { is_invoice: true, contract_number: null, ...inv } : { is_invoice: false } };
 });
 
 let server, base;
@@ -79,7 +82,8 @@ const events = async () => (await ctx.acc.get(`/companies/${ctx.co}`)).events;
 
 test('setup: accountant, client company with its NIF, client contact', async () => {
   const { rows: [acc] } = await pool.query(`insert into users (email, name, role) values ('elena@voixa.es', 'Elena Ruiz', 'accountant') returning *`);
-  ctx.acc = as(await signIn(await createLoginLink(acc.id)));
+  ctx.accCookie = await signIn(await createLoginLink(acc.id));
+  ctx.acc = as(ctx.accCookie);
   ctx.co = (await ctx.acc.post('/companies', { name: 'Sol y Mar Hospitality SL', nif: 'B56781234', contactEmail: 'daniel@solymar.es', contactName: 'Daniel Moreau' }, 201)).id;
   await flushEmails();
   ctx.daniel = as(await signIn(/https?:\/\/\S+token=\S+/.exec(sentMail.find((m) => m.to_email === 'daniel@solymar.es').body_text)[0]));
@@ -164,6 +168,34 @@ test('a CSV uploaded as "Other" can be read as a statement on request', async ()
   assert.deepEqual(r.transactions.find((t) => t.item_id === item.id).contract_refs, ['0034-55']);
 });
 
+test('every AI call is costed, reported per client, and hidden from clients', async () => {
+  const { rows } = await pool.query('select * from ai_usage order by id');
+  assert.equal(rows.length, 2, 'two invoices read with AI; the Norma 43 and CSV statements cost nothing');
+  assert.equal(Number(rows[0].cost_usd), 0.04);
+  assert.equal(rows[0].outcome, 'ok');
+  const report = await ctx.acc.get('/ai-usage');
+  assert.equal(report.total.documents, 2);
+  assert.equal(Math.round(report.total.cost_usd * 100) / 100, 0.08);
+  assert.equal(report.companies[0].name, 'Sol y Mar Hospitality SL');
+  assert.equal(report.models[0].kind, 'invoice');
+  await ctx.daniel.get('/ai-usage', 403);
+  assert.deepEqual((await ctx.daniel.get(`/companies/${ctx.co}/recognition`)).usage, []);
+  assert.equal((await rec()).usage.length, 2);
+  const csv = await fetch(`${base}/api/ai-usage.csv`, { headers: { cookie: ctx.accCookie } }).then((r) => r.text());
+  assert.match(csv, /TOTAL,2,2,,10000,2000,0\.0800/);
+});
+
+test('reading stops when the monthly AI budget is reached', async () => {
+  config.recognition.monthlyBudgetUsd = 0.05;
+  await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Invoice', 'Makro_F-2026-08812.pdf', '%PDF-1.4 makro again'), 201);
+  await processJobs();
+  config.recognition.monthlyBudgetUsd = 0;
+  const r = await rec();
+  assert.ok(r.extractions.some((e) => e.status === 'unsupported' && /budget/.test(e.error)));
+  const { rows } = await pool.query('select count(*)::int as n from ai_usage');
+  assert.equal(rows[0].n, 2, 'no call was made over budget');
+});
+
 test('files that cannot be read are reported in the log, with what to do instead', async () => {
   await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Bank statement', 'extracto.xlsx', Buffer.from('504b030414000000', 'hex')), 201);
   await processJobs();
@@ -171,11 +203,11 @@ test('files that cannot be read are reported in the log, with what to do instead
   await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Invoice', 'scan.pdf', '%PDF-1.4 scan'), 201);
   await processJobs();
   const r = await rec();
-  const failed = r.extractions.filter((e) => e.status === 'unsupported');
+  const failed = r.extractions.filter((e) => e.status === 'unsupported' && !/budget/.test(e.error));
   assert.equal(failed.length, 2);
   assert.ok(failed.some((e) => /Export the statement as CSV, Norma 43/.test(e.error)));
   assert.ok(failed.some((e) => /ANTHROPIC_API_KEY/.test(e.error)));
-  assert.equal((await events()).filter((e) => e.type === 'recognition_failed').length, 2);
+  assert.equal((await events()).filter((e) => e.type === 'recognition_failed' && !/budget/.test(e.text)).length, 2);
 });
 
 test('the evidence log still verifies after recognition and matching', async () => {

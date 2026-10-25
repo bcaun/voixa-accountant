@@ -6,7 +6,8 @@ import { pool, tx } from '../db.js';
 import { appendEvent } from '../ledger.js';
 import { storage } from '../storage.js';
 import { SYSTEM } from '../items.js';
-import { aiAvailable, readWithAi } from './ai.js';
+import { AiError, aiAvailable, readWithAi } from './ai.js';
+import { costOf } from './pricing.js';
 import { looksLikeNorma43, parseNorma43 } from './norma43.js';
 import { looksLikeCamt053, parseCamt053 } from './camt053.js';
 import { looksLikeCsv, parseCsv } from './csv.js';
@@ -86,7 +87,7 @@ const maskIban = (iban) => (iban ? `${iban.slice(0, 4)} …${iban.slice(-4)}` : 
 
 class Unsupported extends Error {}
 
-async function readStatement(type, buf, name) {
+async function readStatement(job, type, buf, name) {
   if (type === 'text') {
     const text = decodeText(buf);
     if (looksLikeNorma43(text)) return { method: 'norma43', data: parseNorma43(text) };
@@ -97,21 +98,54 @@ async function readStatement(type, buf, name) {
       }
     }
     if (!aiAvailable()) throw new Unsupported('This text file is not Norma 43, camt.053 or a bank CSV, and reading other formats needs the AI reader, which is not configured.');
-    return ai('statement', { type: 'text', data: text.slice(0, 400000), name });
+    return ai(job, 'statement', { type: 'text', data: text.slice(0, 400000), name });
   }
-  return readBinaryWithAi('statement', type, buf, name);
+  return readBinaryWithAi(job, 'statement', type, buf, name);
 }
 
-async function readBinaryWithAi(kind, type, buf, name) {
+async function readBinaryWithAi(job, kind, type, buf, name) {
   if (type === 'excel') throw new Unsupported('Excel files are not read yet. Export the statement as CSV, Norma 43 (AEB 43) or PDF and upload that.');
   if (!['pdf', 'png', 'jpeg', 'gif', 'webp'].includes(type)) throw new Unsupported('This file type cannot be read. Upload a PDF, a photo, CSV, Norma 43 or camt.053.');
   if (!aiAvailable()) throw new Unsupported('Reading PDFs and images needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).');
   if (buf.length > config.recognition.maxAiFileMb * 1048576) throw new Unsupported(`The file is larger than ${config.recognition.maxAiFileMb} MB, the limit for automatic reading.`);
-  return ai(kind, { type, data: buf, name });
+  return ai(job, kind, { type, data: buf, name });
 }
 
-async function ai(kind, file) {
-  const { data, model } = await readWithAi(kind, file);
+async function monthSpend() {
+  const { rows: [r] } = await pool.query(`select coalesce(sum(cost_usd), 0)::float as spent from ai_usage where created_at >= date_trunc('month', now())`);
+  return r.spent;
+}
+
+async function recordUsage(job, kind, spent, outcome) {
+  if (!spent?.usage) return;
+  const u = spent.usage;
+  const { cost } = costOf(u, spent.model || config.recognition.model);
+  const { rows: [it] } = await pool.query('select company_id from items where id = $1', [job.item_id]);
+  await pool.query(
+    `insert into ai_usage (company_id, item_id, version_id, kind, model, requested_model, outcome, input_tokens, output_tokens,
+       cache_write_tokens, cache_read_tokens, cost_usd, usage) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [it.company_id, job.item_id, job.version_id, kind, spent.model || config.recognition.model, config.recognition.model, outcome,
+      u.input_tokens || 0, u.output_tokens || 0, u.cache_creation_input_tokens || 0, u.cache_read_input_tokens || 0, cost, JSON.stringify(u)]);
+}
+
+async function ai(job, kind, file) {
+  const budget = config.recognition.monthlyBudgetUsd;
+  if (budget > 0 && (await monthSpend()) >= budget) {
+    throw new Unsupported(`This month's AI reading budget ($${budget}) has been reached. The file can be read again next month, or after the budget is raised.`);
+  }
+  let res;
+  try {
+    res = await readWithAi(kind, file);
+  } catch (err) {
+    if (err instanceof AiError) {
+      await recordUsage(job, kind, err.spent, err.outcome);
+      throw new Unsupported(err.message);
+    }
+    throw err;
+  }
+  const { data, model, usage } = res;
+  const wrongType = (kind === 'statement' && !data.is_bank_statement) || (kind === 'invoice' && !data.is_invoice);
+  await recordUsage(job, kind, { model, usage }, wrongType ? 'not_a_match' : 'ok');
   if (kind === 'statement' && !data.is_bank_statement) throw new Unsupported('The file does not look like a bank statement.');
   if (kind === 'invoice' && !data.is_invoice) throw new Unsupported('The file does not look like an invoice.');
   return { method: 'ai', model, data };
@@ -146,11 +180,11 @@ async function recognise(job) {
   let result;
   try {
     result = job.as_kind === 'statement'
-      ? await readStatement(type, buf, version.file_name)
+      ? await readStatement(job, type, buf, version.file_name)
       : type === 'text'
-        ? (aiAvailable() ? await ai('invoice', { type: 'text', data: decodeText(buf).slice(0, 400000), name: version.file_name })
+        ? (aiAvailable() ? await ai(job, 'invoice', { type: 'text', data: decodeText(buf).slice(0, 400000), name: version.file_name })
           : (() => { throw new Unsupported('Reading invoices needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).'); })())
-        : await readBinaryWithAi('invoice', type, buf, version.file_name);
+        : await readBinaryWithAi(job, 'invoice', type, buf, version.file_name);
   } catch (err) {
     if (err instanceof Unsupported) return saveFailure(job, 'unsupported', err.message);
     throw err;

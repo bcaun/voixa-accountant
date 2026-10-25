@@ -321,11 +321,12 @@ function renderAcc() {
     const mine = o.open.map(withStatus).filter((i) => (i.kind === 'doc' && i.state !== 'done') || i.state === 'expected')
       .sort((a, b) => new Date(a.version_at || a.due_at) - new Date(b.version_at || b.due_at));
     const theirs = o.open.map(withStatus).filter((i) => i.kind !== 'doc' && i.state !== 'expected').sort((a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0));
-    const t = tabs('acc:all', [{ id: 'work', label: 'Work queue' }, { id: 'clients', label: 'Clients' }]);
+    const t = tabs('acc:all', [{ id: 'work', label: 'Work queue' }, { id: 'clients', label: 'Clients' }, { id: 'ai', label: 'AI reading costs' }]);
     let body;
     if (!o.companies.length) body = `<div class="empty" style="text-align:left">No clients yet. Use <b>Add a client</b> to create a workspace and invite the people who will send documents.</div>`;
     else if (t.cur === 'work') body = `<div class="stack"><section><div class="section-h"><h3>Waiting for you</h3><span class="note" style="margin:0">Oldest first: documents to open and confirm, and reports you still owe.</span></div>${list(mine, 'Nothing is waiting for you.', { compact: true, showCompany: true })}</section>
       <section><div class="section-h"><h3>Waiting on clients</h3></div>${list(theirs, 'No reports or requests are waiting on clients.', { compact: true, showCompany: true })}</section></div>`;
+    else if (t.cur === 'ai') body = aiUsageView();
     else body = `<div class="tbl-wrap"><table><thead><tr><th>No.</th><th>Client</th><th>Not opened by you</th><th>Opened, not confirmed</th><th>Reports you owe</th><th>Waiting on client</th><th>Overdue requests</th><th>Next deadline</th></tr></thead><tbody>${all.map(({ c, k }) =>
       `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)">${c.nif ? `NIF ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : '<span style="color:var(--muted)">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     m.innerHTML = `<div class="ws-h"><div><h1>Good to see you, ${esc(first(S.me.name) || 'there')}</h1><p class="sub" style="margin-top:6px">${esc(S.firm)} · ${o.companies.length} client workspace${o.companies.length === 1 ? '' : 's'}</p></div></div>
@@ -351,6 +352,38 @@ function renderAcc() {
       : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
   m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no}${c.nif ? ` · NIF ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
     <div class="actions"><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body;
+}
+
+/* ---------- AI reading costs ---------- */
+const usd = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: n && n < 1 ? 4 : 2 })}`;
+const tok = (n) => Number(n || 0).toLocaleString('en-GB');
+
+function aiUsageView() {
+  const want = S.aiMonth || new Date().toISOString().slice(0, 7);
+  if (!S.aiUsage || S.aiUsage.month !== want) {
+    if (!S.aiLoading) {
+      S.aiLoading = true;
+      api(`/ai-usage?month=${want}`).then((r) => { S.aiUsage = r; }).catch((err) => toast(err.message)).finally(() => { S.aiLoading = false; renderData(); });
+    }
+    return '<p class="loading">Loading…</p>';
+  }
+  const r = S.aiUsage;
+  const months = [...new Set([new Date().toISOString().slice(0, 7), ...r.months])].sort().reverse();
+  const label = (m) => { const [y, mm] = m.split('-'); return `${MONTHS[+mm - 1]} ${y}`; };
+  const budget = r.budget_usd ? `<div class="kpi ${r.spent_this_month_usd >= r.budget_usd ? 'alert' : ''}"><b class="num">${Math.round((r.spent_this_month_usd / r.budget_usd) * 100)}%</b><span>of the ${usd(r.budget_usd)} monthly budget used this month. Reading stops when it is reached.</span></div>` : '';
+  const rows = r.companies.map((c) => `<tr class="click" data-act="client" data-id="${c.company_id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b></td>
+    <td class="num">${c.documents}</td><td class="num">${c.calls}${c.unsuccessful ? ` <span class="sub">(${c.unsuccessful} unsuccessful)</span>` : ''}</td><td class="num mono">${tok(c.input_tokens)}</td><td class="num mono">${tok(c.output_tokens)}</td><td class="num mono" style="text-align:right">${usd(c.cost_usd)}</td></tr>`).join('');
+  const models = r.models.map((m) => `<tr><td class="mono">${esc(m.model)}</td><td>${m.kind === 'statement' ? 'Bank statements' : 'Invoices'}</td><td class="num">${m.calls}</td><td class="num mono">${tok(m.input_tokens)}</td><td class="num mono">${tok(m.output_tokens)}</td><td class="num mono" style="text-align:right">${usd(m.cost_usd)}</td><td class="num mono" style="text-align:right">${usd(m.cost_usd / m.calls)}</td></tr>`).join('');
+  return `<p class="note">Cost of reading PDF and photo statements and invoices with AI, estimated from the tokens each call used and the model's list price. Norma 43, camt.053 and CSV files are read without AI and cost nothing. Anthropic's invoice is the final figure.</p>
+    <div class="section-h"><div class="field" style="min-width:200px"><label for="ai-month">Month</label><select id="ai-month" class="input">${months.map((m) => `<option value="${m}" ${m === r.month ? 'selected' : ''}>${label(m)}</option>`).join('')}</select></div>
+      <a class="btn small" href="/api/ai-usage.csv?month=${r.month}">Download CSV</a></div>
+    <div class="kpis" style="margin-top:12px"><div class="kpi"><b class="num">${usd(r.total.cost_usd)}</b><span>Estimated cost in ${label(r.month)}</span></div>
+      <div class="kpi"><b class="num">${r.total.documents}</b><span>Files read with AI</span></div>
+      <div class="kpi"><b class="num">${r.total.documents ? usd(r.total.cost_usd / r.total.documents) : '—'}</b><span>Average per file</span></div>${budget}</div>
+    ${r.companies.length ? `<div class="tbl-wrap"><table><thead><tr><th>No.</th><th>Client</th><th>Files</th><th>AI calls</th><th>Input tokens</th><th>Output tokens</th><th style="text-align:right">Cost</th></tr></thead><tbody>${rows}
+      <tr><td></td><td><b>Total</b></td><td class="num"><b>${r.total.documents}</b></td><td class="num"><b>${r.total.calls}</b></td><td class="num mono"><b>${tok(r.total.input_tokens)}</b></td><td class="num mono"><b>${tok(r.total.output_tokens)}</b></td><td class="num mono" style="text-align:right"><b>${usd(r.total.cost_usd)}</b></td></tr></tbody></table></div>
+      <h3 style="margin:22px 0 8px">By model and document type</h3><div class="tbl-wrap"><table><thead><tr><th>Model</th><th>Documents</th><th>Calls</th><th>Input tokens</th><th>Output tokens</th><th style="text-align:right">Cost</th><th style="text-align:right">Per call</th></tr></thead><tbody>${models}</tbody></table></div>`
+      : '<div class="empty">No files were read with AI this month.</div>'}`;
 }
 
 /* ---------- recognised bank statements and invoices ---------- */
@@ -425,17 +458,22 @@ function bankView() {
     ${txTable(shown)}`;
 }
 
+function usageLine(itemId) {
+  const u = (S.rec?.usage || []).find((x) => x.item_id === itemId);
+  return u ? `<p class="sub" style="font-size:12px">AI reading: ${u.calls} call${u.calls > 1 ? 's' : ''}, ${tok(u.input_tokens)} input and ${tok(u.output_tokens)} output tokens, about ${usd(u.cost_usd)}.</p>` : '';
+}
+
 function recognisedSection(it) {
   if (it.kind !== 'doc' || !S.rec) return '';
   const e = recFor(it.id), pending = S.rec.pending.includes(it.id), acc = S.me.role === 'accountant';
   const rerun = acc ? `<div class="tbl-actions"><button class="btn small" data-act="recognise" data-as="statement">Read as bank statement</button><button class="btn small" data-act="recognise" data-as="invoice">Read as invoice</button></div>` : '';
   if (pending) return `<section class="receipt"><h3>Recognised data</h3><p class="sub">Reading the file…</p></section>`;
   if (!e) return acc ? `<section class="receipt"><h3>Recognised data</h3><p class="sub">This file was not read automatically because it is not marked as a bank statement or an invoice.</p>${rerun}</section>` : '';
-  if (e.status !== 'done') return `<section class="receipt"><h3>Recognised data</h3><p class="late">${esc(e.error)}</p>${rerun}</section>`;
+  if (e.status !== 'done') return `<section class="receipt"><h3>Recognised data</h3><p class="late">${esc(e.error)}</p>${usageLine(it.id)}${rerun}</section>`;
   if (e.kind === 'statement') {
     const txs = S.rec.transactions.filter((t) => t.item_id === it.id);
     return `<section style="display:grid;gap:10px"><h3>Recognised bank statement</h3><p class="sub" style="font-size:13px">${statementSummary(e)}</p>
-      ${txTable(txs.slice(0, 40))}${txs.length > 40 ? `<p class="sub">Showing 40 of ${txs.length}. See all under Bank & invoices.</p>` : ''}${rerun}</section>`;
+      ${txTable(txs.slice(0, 40))}${txs.length > 40 ? `<p class="sub">Showing 40 of ${txs.length}. See all under Bank & invoices.</p>` : ''}${usageLine(it.id)}${rerun}</section>`;
   }
   const d = invoiceFor(it.id) || e.summary;
   const ms = matchesForInvoice(it.id);
@@ -448,7 +486,7 @@ function recognisedSection(it) {
       <div class="sub" style="font-size:12px">${m.status === 'confirmed' ? 'Confirmed' : `${m.score}% match: ${esc(m.reasons.join(', '))}`}</div>
       ${m.status === 'suggested' && acc ? `<span class="tbl-actions"><button class="btn small" data-act="match" data-decision="confirm" data-id="${m.id}">Confirm</button><button class="btn small" data-act="match" data-decision="reject" data-id="${m.id}">Not this</button></span>` : ''}</div>` : ''; }).join('');
   return `<section style="display:grid;gap:10px"><h3>Recognised invoice</h3><dl class="meta">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
-    <p class="sub" style="font-size:12px">Read from ${METHOD[e.method] || e.method}. Check the figures against the file.</p>
+    <p class="sub" style="font-size:12px">Read from ${METHOD[e.method] || e.method}. Check the figures against the file.</p>${usageLine(it.id)}
     <h3>Payments</h3>${pays || '<p class="sub">No matching payment in the uploaded bank statements yet.</p>'}${rerun}</section>`;
 }
 
@@ -764,6 +802,9 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.route.i) go(S.route.c); } });
 
 // keep the view current: other people act in the same workspace
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'ai-month') { S.aiMonth = e.target.value; S.aiUsage = null; renderData(); }
+});
 window.addEventListener('focus', () => S.me && refresh());
 setInterval(() => { if (S.me && document.visibilityState === 'visible' && $('#modal').hidden) refresh(); }, 30000);
 

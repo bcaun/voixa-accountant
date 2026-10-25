@@ -85,6 +85,7 @@ export const aiAvailable = () => !!override || (config.recognition.ai && !!(proc
 const MEDIA = { pdf: 'application/pdf', png: 'image/png', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
 
 /**
+ * Returns { data, model, usage }; usage is the API's usage block, used for cost tracking.
  * kind: 'statement' | 'invoice'. file: { type: 'pdf'|'png'|'jpeg'|'gif'|'webp'|'text', data: Buffer|string, name }
  */
 export async function readWithAi(kind, file) {
@@ -107,10 +108,21 @@ export async function readWithAi(kind, file) {
     messages: [{ role: 'user', content: [source, { type: 'text', text: kind === 'statement' ? STATEMENT_TASK : INVOICE_TASK }] }],
   });
   const msg = await stream.finalMessage();
-  if (msg.stop_reason === 'refusal') throw new Error('The model declined to read this file');
-  if (msg.stop_reason === 'max_tokens') throw new Error('The statement is too long to read in one go. Split it into shorter periods and upload again.');
+  const spent = { model: msg.model, usage: msg.usage };
+  if (msg.stop_reason === 'refusal') throw new AiError('The model declined to read this file', 'refused', spent);
+  if (msg.stop_reason === 'max_tokens') throw new AiError('The statement is too long to read in one go. Split it into shorter periods and upload again.', 'too_long', spent);
   const text = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const parsed = schema.safeParse(JSON.parse(text));
-  if (!parsed.success) throw new Error('The model returned data in an unexpected shape');
-  return { data: parsed.data, model: msg.model };
+  let parsed;
+  try { parsed = schema.safeParse(JSON.parse(text)); } catch { parsed = { success: false }; }
+  if (!parsed.success) throw new AiError('The model returned data in an unexpected shape', 'bad_output', spent);
+  return { data: parsed.data, ...spent };
+}
+
+/** A failed reading that still used (and billed) tokens. */
+export class AiError extends Error {
+  constructor(message, outcome, spent) {
+    super(message);
+    this.outcome = outcome;
+    this.spent = spent;
+  }
 }

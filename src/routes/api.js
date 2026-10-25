@@ -348,12 +348,18 @@ const num2 = (v) => (v == null ? null : Number(v));
 api.get('/companies/:id/recognition', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
   const cur = 'join items i on i.id = e.item_id join versions v on v.id = e.version_id and v.version = i.version';
-  const [ex, txs, invs, matches, pending] = await Promise.all([
+  const [ex, txs, invs, matches, pending, usage] = await Promise.all([
     query(`select e.item_id, e.version_id, e.kind, e.status, e.method, e.model, e.summary, e.error, e.created_at from extractions e ${cur} where e.company_id = $1`, [company.id]),
     query(`select t.* from bank_transactions t join extractions e on e.id = t.extraction_id ${cur} where t.company_id = $1 order by t.booking_date nulls last, t.line`, [company.id]),
     query(`select d.* from invoice_data d join extractions e on e.id = d.extraction_id ${cur} where d.company_id = $1`, [company.id]),
     query(`select id, transaction_id, invoice_item_id, score, reasons, status, decided_at from payment_matches where company_id = $1 and status <> 'rejected'`, [company.id]),
     query(`select distinct j.item_id from jobs j join items i on i.id = j.item_id where i.company_id = $1 and j.status in ('queued','running')`, [company.id]),
+    // AI costs are the firm's business, not the client's
+    req.user.role === 'accountant'
+      ? query(`select item_id, count(*)::int as calls, sum(input_tokens + cache_write_tokens + cache_read_tokens)::int as input_tokens,
+                 sum(output_tokens)::int as output_tokens, sum(cost_usd)::float as cost_usd
+               from ai_usage where company_id = $1 group by item_id`, [company.id])
+      : { rows: [] },
   ]);
   res.json({
     extractions: ex.rows,
@@ -361,6 +367,7 @@ api.get('/companies/:id/recognition', async (req, res) => {
     invoices: invs.rows.map(({ extraction_id, company_id, ...d }) => ({ ...d, net_amount: num2(d.net_amount), tax_amount: num2(d.tax_amount), total_amount: num2(d.total_amount) })),
     matches: matches.rows,
     pending: pending.rows.map((r) => r.item_id),
+    usage: usage.rows,
   });
 });
 
@@ -387,4 +394,51 @@ api.post('/items/:id/recognise', json, async (req, res) => {
   });
   background();
   res.status(202).json({ ok: true });
+});
+
+/* ---------- AI reading costs (accountants) ---------- */
+
+function usageMonth(q) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(q || ''));
+  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, 1)) : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+  return { month: d.toISOString().slice(0, 7), from: d, to: next };
+}
+
+async function usageReport(req) {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see AI costs.');
+  const { month, from, to } = usageMonth(req.query.month);
+  const [byCompany, byModel, months, thisMonth] = await Promise.all([
+    query(`select c.id as company_id, c.no, c.name, count(distinct u.version_id)::int as documents, count(*)::int as calls,
+             count(*) filter (where u.outcome <> 'ok')::int as unsuccessful,
+             sum(u.input_tokens + u.cache_write_tokens + u.cache_read_tokens)::bigint as input_tokens, sum(u.output_tokens)::bigint as output_tokens,
+             sum(u.cost_usd)::float as cost_usd
+           from ai_usage u join companies c on c.id = u.company_id
+           where u.created_at >= $1 and u.created_at < $2 group by c.id order by cost_usd desc`, [from, to]),
+    query(`select model, kind, count(*)::int as calls, sum(input_tokens + cache_write_tokens + cache_read_tokens)::bigint as input_tokens,
+             sum(output_tokens)::bigint as output_tokens, sum(cost_usd)::float as cost_usd
+           from ai_usage where created_at >= $1 and created_at < $2 group by model, kind order by model, kind`, [from, to]),
+    query(`select distinct to_char(date_trunc('month', created_at), 'YYYY-MM') as m from ai_usage order by m desc limit 24`),
+    query(`select coalesce(sum(cost_usd), 0)::float as spent from ai_usage where created_at >= date_trunc('month', now())`),
+  ]);
+  const rows = byCompany.rows.map((r) => ({ ...r, input_tokens: Number(r.input_tokens), output_tokens: Number(r.output_tokens) }));
+  const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);
+  return {
+    month, months: months.rows.map((r) => r.m), budget_usd: config.recognition.monthlyBudgetUsd || null, spent_this_month_usd: thisMonth.rows[0].spent,
+    total: { documents: sum('documents'), calls: sum('calls'), input_tokens: sum('input_tokens'), output_tokens: sum('output_tokens'), cost_usd: sum('cost_usd') },
+    companies: rows,
+    models: byModel.rows.map((r) => ({ ...r, input_tokens: Number(r.input_tokens), output_tokens: Number(r.output_tokens) })),
+  };
+}
+
+api.get('/ai-usage', async (req, res) => res.json(await usageReport(req)));
+
+api.get('/ai-usage.csv', async (req, res) => {
+  const r = await usageReport(req);
+  const cell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const lines = [['month', 'client_no', 'client', 'documents', 'ai_calls', 'unsuccessful_calls', 'input_tokens', 'output_tokens', 'cost_usd'].join(',')];
+  for (const c of r.companies) lines.push([r.month, c.no, c.name, c.documents, c.calls, c.unsuccessful, c.input_tokens, c.output_tokens, c.cost_usd.toFixed(4)].map(cell).join(','));
+  lines.push([r.month, '', 'TOTAL', r.total.documents, r.total.calls, '', r.total.input_tokens, r.total.output_tokens, r.total.cost_usd.toFixed(4)].map(cell).join(','));
+  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="voixa-ai-usage-${r.month}.csv"` });
+  res.send('\ufeff' + lines.join('\r\n') + '\r\n');
 });

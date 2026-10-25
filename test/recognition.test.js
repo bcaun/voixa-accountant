@@ -6,6 +6,7 @@ import { parseCamt053, looksLikeCamt053 } from '../src/recognition/camt053.js';
 import { parseCsv, parseAmount, parseDate } from '../src/recognition/csv.js';
 import { extractRefs, sameRef, guessCounterparty, nameSimilarity } from '../src/recognition/refs.js';
 import { scoreMatch, bestMatches } from '../src/recognition/matching.js';
+import { costOf } from '../src/recognition/pricing.js';
 
 import { SAMPLE_N43 } from './fixtures.js';
 
@@ -110,4 +111,19 @@ test('matching: amount and supplier without a number still matches; wrong direct
   assert.ok(scoreMatch(tx, invoice).score >= 50);
   assert.ok(scoreMatch({ ...tx, amount: 1210 }, invoice).score < 50);
   assert.equal(bestMatches({ ...tx, counterparty_name: 'Other company', amount: -99 }, [invoice]).length, 0);
+});
+
+test('cost of a call from its token usage', () => {
+  const round = (n) => Math.round(n * 1e6) / 1e6;
+  assert.equal(round(costOf({ input_tokens: 8000, output_tokens: 5000 }, 'claude-opus-5-5').cost), 0.132);
+  // cache reads are billed at the cache price, cache writes at 1.25x input
+  assert.equal(round(costOf({ input_tokens: 0, cache_read_input_tokens: 10000, cache_creation_input_tokens: 1000, output_tokens: 0 }, 'claude-opus-5-5').cost), 0.007);
+  // a fallback after a decline: each part is priced at the model that produced it
+  const fb = costOf({ input_tokens: 2000, output_tokens: 600, iterations: [
+    { type: 'message', model: 'claude-opus-5-5', input_tokens: 1000, output_tokens: 100 },
+    { type: 'fallback_message', model: 'claude-sonnet-5-5', input_tokens: 1000, output_tokens: 500 }] }, 'claude-opus-5-5');
+  assert.equal(round(fb.cost), round((1000 * 4 + 100 * 20 + 1000 * 2 + 500 * 10) / 1e6));
+  // Haiku 5.5 prompts over 100K tokens use the higher tier
+  assert.equal(round(costOf({ input_tokens: 200000, output_tokens: 1000 }, 'claude-haiku-5-5').cost), round((200000 * 0.5 + 1000 * 2.5) / 1e6));
+  assert.equal(costOf({ input_tokens: 1 }, 'some-unknown-model').known, false);
 });

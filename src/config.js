@@ -38,6 +38,8 @@ export const config = {
     ai: env.RECOGNITION_AI !== 'off',
     model: env.RECOGNITION_MODEL || 'claude-opus-5-5',
     maxAiFileMb: num(env.RECOGNITION_MAX_AI_MB, 20),
+    // stop sending files to the AI reader once this month's estimated spend reaches it (0 = no limit)
+    monthlyBudgetUsd: num(env.AI_MONTHLY_BUDGET_USD, 0),
   },
 
   scheduler: {

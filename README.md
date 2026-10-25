@@ -37,6 +37,11 @@ nobody can say "I never got it", "you never sent it" or "it went to spam".
   invoice number, amount, counterparty and date; the accountant confirms or rejects each match. Every
   recognition, suggested match and decision is written to the log. An accountant can re-read any file
   as a statement or an invoice.
+- **AI cost tracking.** Every call to the AI reader stores its token usage and estimated cost (list
+  price per model, including fallbacks and cache tokens). Accountants see the cost per client and
+  month, per model and per document, can download it as CSV, and can set a monthly budget
+  (`AI_MONTHLY_BUDGET_USD`) after which files are not sent to the AI reader until the next month.
+  Clients never see these figures.
 - **Passwordless sign-in.** People sign in with a one-time link sent to their email.
 
 ## Run it locally
@@ -105,7 +110,7 @@ src/mailer.js        email queue, transports (console, SMTP, Postmark), delivery
 src/scheduler.js     automatic reminders and recurring deadlines
 src/export.js        CSV and printable tracking report
 src/storage.js       file storage (local disk or S3-compatible)
-src/recognition/     statement parsers (Norma 43, camt.053, CSV), AI reader, references, payment matching
+src/recognition/     statement parsers (Norma 43, camt.053, CSV), AI reader, references, payment matching, AI pricing
 src/sql/             database schema
 public/              web client (plain HTML, CSS and JavaScript, no build step)
 test/                end-to-end tests
