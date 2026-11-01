@@ -21,6 +21,10 @@
 		Referrer-Policy strict-origin-when-cross-origin
 		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 	}
+	# pages are always checked for a newer version; the stylesheet is linked with a content hash, so it can be kept
+	@pages not path /fonts/* /favicon.svg /styles.css
+	header @pages Cache-Control "no-cache"
+	header /styles.css Cache-Control "public, max-age=31536000, immutable"
 	@static path /fonts/* /favicon.svg
 	header @static Cache-Control "public, max-age=2592000"
 	handle_errors {

@@ -2,6 +2,7 @@
 // Pages live in src/pages/*.mjs; each exports an array of { key, lang, path, title, description, body, head?, type? }
 // and may export `files` ([{ path, content }]) for extra outputs such as RSS feeds. News posts live in src/news/.
 import { readdir, readFile, mkdir, writeFile, copyFile, cp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { company, demoHref } from './src/company.mjs';
@@ -63,7 +64,7 @@ function layout(page, all) {
 <meta property="og:type" content="${page.type || 'website'}">
 <meta property="og:site_name" content="${company.product}">${page.head || ''}
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/styles.css?v=${CSS_VERSION}">
 </head>
 <body>
 <header class="top"><div class="wrap">
@@ -81,6 +82,10 @@ ${legalBody}
 `;
 }
 
+// the stylesheet is built first so pages can link it with a content hash: browsers then never use a stale copy
+const fontsCss = await readFile(path.join(here, 'src/fonts.css'), 'utf8');
+const CSS = fontsCss + '\n' + (await readFile(path.join(here, 'src/styles.css'), 'utf8')).replace('@import url(/fonts.css);\n', '');
+const CSS_VERSION = createHash('sha256').update(CSS).digest('hex').slice(0, 10);
 const LOGO = (await readFile(path.join(here, 'src/logo.svg'), 'utf8')).trim().replace('<svg ', '<svg aria-hidden="true" focusable="false" ');
 // order of the legal pages in menus
 const ORDER = ['legal-notice', 'privacy', 'terms', 'dpa', 'subprocessors', 'security'];
@@ -101,8 +106,7 @@ for (const page of all) {
   await writeFile(path.join(dir, 'index.html'), layout(page, all));
 }
 // fonts.css is inlined into the site stylesheet, and shared with the app (public/) so both use the same files
-const fontsCss = await readFile(path.join(here, 'src/fonts.css'), 'utf8');
-await writeFile(path.join(out, 'styles.css'), fontsCss + '\n' + (await readFile(path.join(here, 'src/styles.css'), 'utf8')).replace('@import url(/fonts.css);\n', ''));
+await writeFile(path.join(out, 'styles.css'), CSS);
 const app = path.join(here, '../public');
 await writeFile(path.join(app, 'fonts.css'), fontsCss);
 await rm(path.join(app, 'fonts'), { recursive: true, force: true });
