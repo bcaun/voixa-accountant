@@ -394,7 +394,7 @@ function renderAcc() {
     const mine = o.open.map(withStatus).filter((i) => (i.kind === 'doc' && i.state !== 'done') || i.state === 'expected')
       .sort((a, b) => new Date(a.version_at || a.due_at) - new Date(b.version_at || b.due_at));
     const theirs = o.open.map(withStatus).filter((i) => i.kind !== 'doc' && i.state !== 'expected').sort((a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0));
-    const t = tabs('acc:all', [{ id: 'work', label: 'Work queue' }, { id: 'clients', label: 'Clients' }, { id: 'ai', label: 'AI reading costs' }]);
+    const t = tabs('acc:all', [{ id: 'work', label: 'Work queue' }, { id: 'clients', label: 'Clients' }, ...(isAdmin() ? [{ id: 'ai', label: 'AI reading costs' }] : [])]);
     let body;
     if (!o.companies.length) body = `<div class="empty" style="text-align:left">No clients yet. Use <b>Add a client</b> to create a workspace and invite the people who will send documents.</div>`;
     else if (t.cur === 'work') body = `<div class="stack"><section><div class="section-h"><h3>Waiting for you</h3><span class="note" style="margin:0">Oldest first: documents to open and confirm, and reports you still owe.</span></div>${list(mine, 'Nothing is waiting for you.', { compact: true, showCompany: true })}</section>
@@ -770,15 +770,47 @@ function clientModal(edit) {
 }
 const countryHint = (k) => `The country sets the tax ID check, the time zone of deadlines (${esc(k.tz.split('/').pop())}), the deadline templates and the formats read exactly: ${esc(k.bankFormats)}.`;
 
-function firmModal() {
-  openModal(`${modalHead('Firm settings')}
-  <form class="modal-b" id="firmForm" novalidate>
+const isAdmin = () => S.me?.role === 'accountant' && S.me.firmRole === 'admin';
+
+async function firmModal(tab) {
+  let team = { team: [], admin: false };
+  try { team = await api('/firm/team'); } catch (err) { toast(err.message); }
+  const admin = team.admin;
+  const access = (m) => (m.all_clients ? 'All clients' : `${m.company_ids.length} client${m.company_ids.length === 1 ? '' : 's'}`);
+  const members = team.team.map((m) => `<div class="person"><div><b>${esc(m.name || m.email)}</b> ${m.firm_role === 'admin' ? '<span class="pill sent" style="margin-left:6px">Administrator</span>' : ''}${m.disabled_at ? '<span class="pill muted" style="margin-left:6px">Disabled</span>' : ''}
+      <br><span class="sub">${esc(m.email)} · ${access(m)} · ${m.mfa ? 'two-step sign-in on' : '<span style="color:var(--bad)">no two-step sign-in</span>'}${m.last_seen_at ? ` · active ${ago(m.last_seen_at)}` : ' · never signed in'}</span></div>
+      ${admin && m.id !== team.me ? `<button class="btn small" data-act="member-edit" data-id="${m.id}">Change</button>` : ''}</div>`).join('');
+  S.team = team.team;
+  const settings = admin ? `<form id="firmForm" novalidate style="display:grid;gap:12px">
     <div class="field"><label for="fm-name">Firm name</label><input id="fm-name" class="input" value="${esc(S.firm)}"></div>
     <div class="field"><label for="fm-country">Country</label><select id="fm-country" class="input">${countryOptions(S.firmInfo?.country)}</select></div>
     <p class="sub" style="font-size:13px">Clients see the firm name in every email. The country is the default for new clients; each client keeps its own country.</p>
     <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="fm-mfa" ${S.firmInfo?.require_mfa ? 'checked' : ''} style="margin-top:4px"><span>Require two-step sign-in for every accountant of the firm</span></label>
-    <p class="err" id="fmErr" hidden></p>
-    <div class="dr-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
+    <p class="err" id="fmErr" hidden></p><div><button class="btn primary" type="submit">Save</button></div></form>` : '';
+  const invite = admin ? `<form id="inviteForm" class="inline-form" novalidate><h3>Invite a colleague</h3>
+    <div class="grid2"><div class="field"><label for="iv-name">Name</label><input id="iv-name" class="input"></div><div class="field"><label for="iv-email">Email</label><input id="iv-email" class="input" type="email"></div></div>
+    ${memberFields('iv', { firm_role: 'staff', all_clients: true, company_ids: [] })}
+    <p class="err" id="ivErr" hidden></p><div><button class="btn primary" type="submit">Send invitation</button></div></form>` : '';
+  openModal(`${modalHead(admin ? 'Firm settings and team' : 'Your firm’s team')}<div class="modal-b">${settings}
+    <h3 style="margin-top:6px">Team</h3><div class="people">${members}</div>${invite}
+    ${admin ? '<div><button class="btn small" data-act="firm-log">Firm activity log</button></div><div id="firmLog"></div>' : ''}</div>`);
+  if (tab === 'team') $('#iv-email')?.focus();
+}
+function memberFields(p, m) {
+  const cos = S.overview?.companies || S.companies || [];
+  return `<div class="grid2"><div class="field"><label for="${p}-role">Role</label><select id="${p}-role" class="input"><option value="staff" ${m.firm_role === 'staff' ? 'selected' : ''}>Staff</option><option value="admin" ${m.firm_role === 'admin' ? 'selected' : ''}>Administrator</option></select></div>
+    <div class="field"><label for="${p}-all">Clients</label><select id="${p}-all" class="input" data-toggle="${p}-cos"><option value="1" ${m.all_clients ? 'selected' : ''}>All clients</option><option value="0" ${m.all_clients ? '' : 'selected'}>Only the clients chosen below</option></select></div></div>
+    <div id="${p}-cos" class="presets" ${m.all_clients ? 'hidden' : ''} style="max-height:180px;overflow:auto">${cos.map((c) => `<label class="chip" style="cursor:pointer"><input type="checkbox" value="${c.id}" ${m.company_ids.includes(c.id) ? 'checked' : ''}> #${c.no} ${esc(c.name)}</label>`).join('') || '<span class="sub">No clients yet.</span>'}</div>
+    <p class="sub" style="font-size:13px">Administrators manage the firm’s settings, team and AI costs. Staff work with clients.</p>`;
+}
+const memberValues = (p) => ({ role: $(`#${p}-role`).value, allClients: $(`#${p}-all`).value === '1', companyIds: [...document.querySelectorAll(`#${p}-cos input:checked`)].map((x) => x.value) });
+function memberModal(m) {
+  openModal(`${modalHead(`Change ${m.name || m.email}`)}<form class="modal-b" id="memberEdit" data-id="${m.id}" novalidate>
+    ${memberFields('me', m)}
+    <p class="err" id="meErr" hidden></p>
+    <div class="dr-actions"><button class="btn primary" type="submit">Save</button>
+    <button class="btn" type="button" data-act="member-toggle" data-id="${m.id}" data-off="${m.disabled_at ? '0' : '1'}">${m.disabled_at ? 'Enable the account' : 'Disable the account'}</button>
+    <button class="btn" type="button" data-act="firm-settings">Back</button></div></form>`);
 }
 
 /* ---------- forms ---------- */
@@ -872,10 +904,21 @@ document.addEventListener('submit', async (e) => {
       if (ok) { Object.assign(S.me, body); closeModal(); toast('Saved.'); renderHeader(); }
       return;
     }
+    if (f.id === 'inviteForm') {
+      const body = { name: $('#iv-name').value.trim(), email: $('#iv-email').value.trim(), ...memberValues('iv') };
+      const ok = await api('/firm/team', { method: 'POST', body }).then(() => true, (err) => { showErr('#ivErr', err.message); return false; });
+      if (ok) { toast(`Invitation sent to ${body.email}.`); firmModal(); }
+      return;
+    }
+    if (f.id === 'memberEdit') {
+      const ok = await api(`/firm/team/${f.dataset.id}`, { method: 'PATCH', body: memberValues('me') }).then(() => true, (err) => { showErr('#meErr', err.message); return false; });
+      if (ok) { toast('Saved. The change is in the firm’s log.'); firmModal(); }
+      return;
+    }
     if (f.id === 'firmForm') {
       const name = $('#fm-name').value.trim(), country = $('#fm-country').value;
       const ok = await api('/firm', { method: 'PATCH', body: { name, country, requireMfa: $('#fm-mfa').checked } }).then(() => true, (err) => { showErr('#fmErr', err.message); return false; });
-      if (ok) { S.firm = name; S.firmInfo = { ...S.firmInfo, name, country, require_mfa: $('#fm-mfa').checked }; closeModal(); toast('Firm details saved.'); renderShell(); await refresh(); }
+      if (ok) { S.firm = name; S.firmInfo = { ...S.firmInfo, name, country, require_mfa: $('#fm-mfa').checked }; toast('Firm details saved.'); renderShell(); await refresh(); firmModal(); }
     }
     if (f.id === 'memberForm') {
       const email = $('#mb-email').value.trim();
@@ -944,6 +987,20 @@ document.addEventListener('click', async (e) => {
     case 'edit-client': clientModal(true); break;
     case 'firm-settings': firmModal(); break;
     case 'account': accountModal(); break;
+    case 'member-edit': memberModal(S.team.find((m) => m.id === b.dataset.id)); break;
+    case 'member-toggle': {
+      const off = b.dataset.off === '1';
+      if (off && !confirm('Disable this account? They are signed out at once and can no longer sign in. Their past actions stay in the logs.')) break;
+      try { await api(`/firm/team/${b.dataset.id}`, { method: 'PATCH', body: { disabled: off } }); toast(off ? 'Account disabled.' : 'Account enabled.'); firmModal(); } catch (err) { showErr('#meErr', err.message); }
+      break;
+    }
+    case 'firm-log': {
+      try {
+        const r = await api('/firm/events');
+        $('#firmLog').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>When</th><th>What happened</th></tr></thead><tbody>${r.events.map((e) => `<tr><td class="mono" style="white-space:nowrap">${fmt(e.at)}</td><td>${esc(e.text)}</td></tr>`).join('') || '<tr><td colspan="2">Nothing yet.</td></tr>'}</tbody></table></div>`;
+      } catch (err) { toast(err.message); }
+      break;
+    }
     case 'mfa-start': startMfaSetup(); break;
     case 'reload': location.reload(); break;
     case 'session-out': try { await api(`/me/sessions/${b.dataset.id}`, { method: 'DELETE' }); toast('Signed out on that device.'); accountModal(); } catch (err) { toast(err.message); } break;
@@ -968,6 +1025,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('
 // keep the view current: other people act in the same workspace
 document.addEventListener('change', (e) => {
   if (e.target.id === 'ai-month') { S.aiMonth = e.target.value; S.aiUsage = null; renderData(); }
+  if (e.target.dataset?.toggle) { const box = $(`#${e.target.dataset.toggle}`); if (box) box.hidden = e.target.value === '1'; }
   if (e.target.id === 'co-country') {
     const k = COUNTRY(e.target.value);
     $('#co-nif-l').textContent = k.taxIdLabel; $('#co-nif').placeholder = k.taxIdHint; $('#co-hint').innerHTML = countryHint(k);

@@ -25,6 +25,8 @@ export async function createCompany(c, { user, name, nif, city, country }) {
   const { rows: [created] } = await c.query(
     'insert into companies (firm_id, no, name, nif, city, country, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning id',
     [firm.id, firm.company_seq, name, taxId, city || '', cc, user.id]);
+  // someone who sees only assigned clients is assigned the client they create
+  if (!user.all_clients) await c.query('insert into company_assignments (company_id, user_id) values ($1, $2)', [created.id, user.id]);
   const { rows: [co] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [created.id]);
   const label = countryOf(cc).taxIdLabel;
   await appendEvent(c, { companyId: co.id, actor: actorOf(user), type: 'company_created',

@@ -66,7 +66,7 @@ export async function sideUsers(c, companyId, side) {
     // the accountants of the firm the client belongs to, and no one else
     return (await c.query(
       `select u.id, u.email, u.name, u.role, u.notify_mode from users u join companies co on co.firm_id = u.firm_id
-       where co.id = $1 and u.role = 'accountant' and u.disabled_at is null`, [companyId])).rows;
+       where co.id = $1 and u.role = 'accountant' and u.disabled_at is null and accountant_sees(co.id, u.id)`, [companyId])).rows;
   }
   return (await c.query(
     `select u.id, u.email, u.name, u.role, u.notify_mode from memberships m join users u on u.id = m.user_id

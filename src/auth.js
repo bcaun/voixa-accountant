@@ -15,10 +15,13 @@ export async function createLoginLink(userId, db = { query }) {
   return `${config.appUrl}/auth/verify?token=${token}`;
 }
 
-export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName } = {}) {
+export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName, team } = {}) {
   const url = await createLoginLink(user.id, client);
   const heading = invitedBy ? `${invitedBy} invited you to ${companyName}` : 'Sign in to Pescada';
-  const lines = invitedBy
+  const lines = team
+    ? [`You have been added to the ${firmName} team on Pescada, where the firm exchanges documents with its clients and every step is recorded.`,
+       `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
+    : invitedBy
     ? [`You now have access to the ${companyName} workspace on Pescada, where documents are exchanged with ${firmName || 'your accountant'} and every step is recorded.`,
        `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
     : [`Use the button below to sign in. The link works once and expires in ${config.loginLinkMinutes} minutes.`,
@@ -124,7 +127,7 @@ export async function companyFor(user, companyId, db) {
   const q = db || { query };
   const lock = db ? ' for update of c' : '';
   const { rows: [c] } = user.role === 'accountant'
-    ? await q.query(`${COMPANY_SQL} where c.id = $1 and c.firm_id = $2${lock}`, [companyId, user.firm_id])
+    ? await q.query(`${COMPANY_SQL} where c.id = $1 and accountant_sees(c.id, $2)${lock}`, [companyId, user.id])
     : await q.query(`${COMPANY_SQL} join memberships m on m.company_id = c.id
                       where c.id = $1 and m.user_id = $2 and m.removed_at is null${lock}`, [companyId, user.id]);
   if (!c) throw new HttpError(404, 'Workspace not found.');

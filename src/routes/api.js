@@ -77,12 +77,12 @@ api.get('/me', async (req, res) => {
     return res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, mfa: { enabled: true, pending: true } }, firm: '', companies: [], countries: publicCountries() });
   }
   const { rows } = u.role === 'accountant'
-    ? await query('select id, no, name, nif, city, country from companies where firm_id = $1 order by no', [u.firm_id])
+    ? await query('select id, no, name, nif, city, country from companies where firm_id = $1 and accountant_sees(id, $2) order by no', [u.firm_id, u.id])
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null order by f.name, c.no`, [u.id]);
   const firm = u.firm_id ? (await query('select id, name, country, require_mfa from firms where id = $1', [u.firm_id])).rows[0] : null;
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
+  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
     firmInfo: firm, countries: publicCountries(), companies: rows });
 });
@@ -168,6 +168,86 @@ api.post('/me/2fa/recovery', json, async (req, res) => {
   res.json({ recoveryCodes: codes });
 });
 
+/* ---------- the firm's team ---------- */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function teamOf(firmId) {
+  const { rows } = await query(
+    `select u.id, u.name, u.email, u.firm_role, u.all_clients, u.disabled_at, u.created_at, u.totp_enabled_at is not null as mfa,
+            (select max(s.last_seen_at) from sessions s where s.user_id = u.id) as last_seen_at,
+            coalesce((select array_agg(a.company_id) from company_assignments a where a.user_id = u.id), '{}') as company_ids
+     from users u where u.firm_id = $1 and u.role = 'accountant' order by u.disabled_at nulls first, u.name, u.email`, [firmId]);
+  return rows;
+}
+
+api.get('/firm/team', async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see the team.');
+  res.json({ team: await teamOf(req.user.firm_id), me: req.user.id, admin: req.user.firm_role === 'admin' });
+});
+
+/** Assignments are only to the firm's own clients. */
+async function setAssignments(c, firmId, userId, companyIds) {
+  const ids = [...new Set((companyIds || []).filter(isUuid))];
+  const { rows } = ids.length ? await c.query('select id from companies where firm_id = $1 and id = any($2)', [firmId, ids]) : { rows: [] };
+  await c.query('delete from company_assignments where user_id = $1', [userId]);
+  for (const r of rows) await c.query('insert into company_assignments (company_id, user_id) values ($1, $2)', [r.id, userId]);
+  return rows.length;
+}
+
+api.post('/firm/team', json, async (req, res) => {
+  requireAdmin(req.user);
+  const b = req.body || {};
+  const email = str(b.email, 200).toLowerCase(), name = str(b.name, 200);
+  const role = b.role === 'admin' ? 'admin' : 'staff', all = b.allClients !== false;
+  if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Enter a valid email address.');
+  const u = await tx(async (c) => {
+    const { rows: [f] } = await c.query('select * from firms where id = $1', [req.user.firm_id]);
+    const { rows: [existing] } = await c.query('select * from users where email = $1', [email]);
+    if (existing && existing.role === 'client') throw new HttpError(409, `${email} is a client’s address in Pescada. Use another address for the accountant.`);
+    if (existing && existing.firm_id && existing.firm_id !== f.id) throw new HttpError(409, `${email} already belongs to another firm.`);
+    if (existing && !existing.disabled_at) throw new HttpError(409, `${email} is already on the team.`);
+    const { rows: [user] } = existing
+      ? await c.query(`update users set disabled_at = null, firm_role = $2, all_clients = $3, name = coalesce(nullif($4, ''), name) where id = $1 returning *`, [existing.id, role, all, name])
+      : await c.query(`insert into users (email, name, role, firm_id, firm_role, all_clients) values ($1, $2, 'accountant', $3, $4, $5) returning *`, [email, name, f.id, role, all]);
+    const n = all ? 0 : await setAssignments(c, f.id, user.id, b.companyIds);
+    await sendLoginLink(c, user, { invitedBy: req.user.name || req.user.email, companyName: f.name, firmName: f.name, team: true });
+    await firmEvent(c, f.id, req.user, 'member_invited', `${req.user.name || req.user.email} invited ${name || email} (${email}) as ${role === 'admin' ? 'administrator' : 'staff'}, ${all ? 'all clients' : `${n} client${n === 1 ? '' : 's'}`}`, { email, role, all });
+    return user;
+  });
+  flushEmails().catch((err) => console.error('mail', err));
+  res.status(201).json({ id: u.id });
+});
+
+api.patch('/firm/team/:id', json, async (req, res) => {
+  requireAdmin(req.user);
+  if (!isUuid(req.params.id)) throw new HttpError(404, 'Not on the team.');
+  const b = req.body || {};
+  await tx(async (c) => {
+    const { rows: [m] } = await c.query(`select * from users where id = $1 and firm_id = $2 and role = 'accountant' for update`, [req.params.id, req.user.firm_id]);
+    if (!m) throw new HttpError(404, 'Not on the team.');
+    const changes = [];
+    const role = b.role === undefined ? m.firm_role : b.role === 'admin' ? 'admin' : 'staff';
+    const disable = b.disabled === undefined ? !!m.disabled_at : !!b.disabled;
+    if ((role !== 'admin' || disable) && m.firm_role === 'admin' && !m.disabled_at) {
+      const { rows: [x] } = await c.query(`select count(*)::int as n from users where firm_id = $1 and role = 'accountant' and firm_role = 'admin' and disabled_at is null and id <> $2`, [req.user.firm_id, m.id]);
+      if (!x.n) throw new HttpError(409, 'The firm needs at least one active administrator.');
+    }
+    if (role !== m.firm_role) changes.push(`role ${m.firm_role} → ${role}`);
+    let all = m.all_clients;
+    if (b.allClients !== undefined) {
+      all = !!b.allClients;
+      const n = all ? (await c.query('delete from company_assignments where user_id = $1', [m.id]), 0) : await setAssignments(c, req.user.firm_id, m.id, b.companyIds);
+      changes.push(all ? 'access to all clients' : `access to ${n} client${n === 1 ? '' : 's'}`);
+    }
+    if (disable !== !!m.disabled_at) changes.push(disable ? 'account disabled' : 'account enabled again');
+    await c.query('update users set firm_role = $2, all_clients = $3, disabled_at = $4 where id = $1', [m.id, role, all, disable ? (m.disabled_at || new Date()) : null]);
+    if (disable) await c.query('delete from sessions where user_id = $1', [m.id]);
+    if (changes.length) await firmEvent(c, req.user.firm_id, req.user, 'member_updated', `${req.user.name || req.user.email} changed ${m.name || m.email}: ${changes.join(', ')}`, { user_id: m.id, role, all, disabled: disable });
+  });
+  res.json({ ok: true });
+});
+
 /* ---------- my sessions ---------- */
 
 api.get('/me/sessions', async (req, res) => {
@@ -188,14 +268,18 @@ api.post('/me/sessions/sign-out-others', async (req, res) => {
 
 /* ---------- the accountant's firm ---------- */
 
+const requireAdmin = (user) => {
+  if (user.role !== 'accountant' || user.firm_role !== 'admin') throw new HttpError(403, 'Only the firm’s administrators can do this.');
+};
+
 api.get('/firm/events', async (req, res) => {
-  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see the firm’s log.');
+  requireAdmin(req.user);
   const { rows } = await query('select at, actor_name, type, text from firm_events where firm_id = $1 order by at desc limit 200', [req.user.firm_id]);
   res.json({ events: rows });
 });
 
 api.patch('/firm', json, async (req, res) => {
-  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can change the firm’s details.');
+  requireAdmin(req.user);
   const name = str(req.body?.name, 200), country = req.body?.country;
   if (!name) throw new HttpError(400, 'Enter the firm’s name.');
   if (!isCountry(country)) throw new HttpError(400, `Choose one of: ${COUNTRY_CODES.join(', ')}.`);
@@ -213,14 +297,15 @@ api.patch('/firm', json, async (req, res) => {
 api.get('/overview', async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
   const firmId = req.user.firm_id;
-  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at from companies where firm_id = $1 order by no', [firmId]);
+  const uid = req.user.id;
+  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at from companies where firm_id = $1 and accountant_sees(id, $2) order by no', [firmId, uid]);
   const { rows: open } = await query(
     `select i.id, i.company_id, i.seq, i.kind, i.title, i.category, i.period, i.due_at, i.state, i.version,
             i.sent_at, i.version_at, i.opened_at, i.done_at, i.reminders, c.no, c.name as company_name, c.country
-     from items i join companies c on c.id = i.company_id where c.firm_id = $1 and i.state <> 'done' order by i.version_at nulls last`, [firmId]);
+     from items i join companies c on c.id = i.company_id where c.firm_id = $1 and accountant_sees(c.id, $2) and i.state <> 'done' order by i.version_at nulls last`, [firmId, uid]);
   const { rows: members } = await query(
     `select m.company_id, count(*)::int as n from memberships m join companies c on c.id = m.company_id
-     where m.removed_at is null and c.firm_id = $1 group by m.company_id`, [firmId]);
+     where m.removed_at is null and c.firm_id = $1 and accountant_sees(c.id, $2) group by m.company_id`, [firmId, uid]);
   const mcount = Object.fromEntries(members.map((r) => [r.company_id, r.n]));
   res.json({
     companies: cos.map((c) => ({ ...c, members: mcount[c.id] || 0 })),
@@ -265,7 +350,7 @@ api.get('/companies/:id/changes', async (req, res) => {
 });
 api.get('/overview/changes', async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
-  const { rows: [r] } = await query('select coalesce(sum(head_seq), 0)::bigint as seq, count(*)::int as n from companies where firm_id = $1', [req.user.firm_id]);
+  const { rows: [r] } = await query('select coalesce(sum(head_seq), 0)::bigint as seq, count(*)::int as n from companies where firm_id = $1 and accountant_sees(id, $2)', [req.user.firm_id, req.user.id]);
   res.json({ seq: `${r.seq}:${r.n}` });
 });
 
@@ -624,7 +709,7 @@ function usageMonth(q) {
 }
 
 async function usageReport(req) {
-  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see AI costs.');
+  requireAdmin(req.user);
   const { month, from, to } = usageMonth(req.query.month);
   const firmId = req.user.firm_id;
   const [byCompany, byModel, months, thisMonth] = await Promise.all([
@@ -633,7 +718,7 @@ async function usageReport(req) {
              sum(u.input_tokens + u.cache_write_tokens + u.cache_read_tokens)::bigint as input_tokens, sum(u.output_tokens)::bigint as output_tokens,
              sum(u.cost_usd)::float as cost_usd
            from ai_usage u join companies c on c.id = u.company_id
-           where c.firm_id = $3 and u.created_at >= $1 and u.created_at < $2 group by c.id order by cost_usd desc`, [from, to, firmId]),
+           where c.firm_id = $3 and accountant_sees(c.id, $4) and u.created_at >= $1 and u.created_at < $2 group by c.id order by cost_usd desc`, [from, to, firmId, req.user.id]),
     query(`select u.model, u.kind, count(*)::int as calls, sum(u.input_tokens + u.cache_write_tokens + u.cache_read_tokens)::bigint as input_tokens,
              sum(u.output_tokens)::bigint as output_tokens, sum(u.cost_usd)::float as cost_usd
            from ai_usage u join companies c on c.id = u.company_id
