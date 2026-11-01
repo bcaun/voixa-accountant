@@ -137,6 +137,83 @@ docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js list-f
 cd /opt/voixa-exchange && bash deploy/update.sh
 ```
 
+Если сервер устанавливался до ноября 2026, один раз добавьте в `deploy/.env` (без `#`):
+```
+SECRET_KEY=<вывод команды: openssl rand -hex 32>
+ALERT_EMAIL=<ваш адрес для сообщений о сбоях>
+```
+`SECRET_KEY` шифрует секреты двухфакторного входа. Не меняйте его после того, как бухгалтеры
+включили 2FA, и храните копию вне сервера (например, в менеджере паролей).
+
+## 9. Безопасность и надзор
+
+- **Сбои.** На `ALERT_EMAIL` приходят письма об ошибках приложения, недоставленной почте и
+  зависших задачах (не чаще одного письма на тему в 15 минут).
+- **Внешняя проверка.** В UptimeRobot (бесплатно) добавьте монитор HTTP(s) на
+  `https://app.pescada.io/healthz/deep?token=<WEBHOOK_TOKEN>` с интервалом 5 минут.
+  Он проверяет базу, очередь писем и задания распознавания.
+- **Проверка восстановления** раз в месяц: `bash deploy/restore-test.sh` — разворачивает последнюю
+  копию базы во временной базе, проверяет журналы всех клиентов и удаляет её. Живая база не затрагивается.
+- **Проверка журналов** на живой базе: `docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js verify-all`
+- **Антивирус.** Сервис `clamav` запускается сам и занимает ~1,5 ГБ памяти (сервер с 4 ГБ — достаточно).
+  Пока он загружается, файлы принимаются и проверяются позже; заражённые блокируются, обе стороны получают письмо.
+- **DMARC.** Когда в Postmark → DMARC несколько недель нет чужих отправителей, смените в Cloudflare
+  запись `_dmarc.pescada.io` на `v=DMARC1; p=quarantine; rua=mailto:<ваш адрес>` (позже — `p=reject`).
+- **R2.** В бакете включите удаление старых (noncurrent) версий через 30 дней для префикса `db-backups/`.
+- **Обновления зависимостей** предлагает Dependabot (pull request раз в неделю); CI проверяет `npm audit`.
+
+## 10. Язык писем и интерфейса
+
+Письма уходят на языке человека: выбранном им в «Аккаунт», иначе — по стране фирмы (для бухгалтеров)
+или клиента (для клиентов): ES → испанский, IT → итальянский, FR → французский, DE → немецкий,
+PT → португальский, остальные → английский. Чтобы все письма были на одном языке, задайте
+`EMAIL_LANG=es` (или `en`, `it`, `fr`, `de`, `pt`); по умолчанию `auto`.
+
+## 11. Документы по почте (in.pescada.io)
+
+У каждого клиента появляется адрес вида `sol-y-mar-7k2@in.pescada.io`: всё, что на него присылают
+с адресов участников, попадает в его пространство.
+
+1. Postmark → Server → **Default Inbound Stream** → Settings → Inbound domain `in.pescada.io`;
+   webhook `https://app.pescada.io/webhooks/postmark-inbound?token=<WEBHOOK_TOKEN>`.
+2. Cloudflare DNS: запись **MX** `in` → `inbound.postmarkapp.com`, приоритет 10, DNS only.
+3. `deploy/.env`: `INBOUND_DOMAIN=in.pescada.io`, перезапуск.
+
+Письма без прохождения SPF или DKIM отклоняются (отключается `INBOUND_REQUIRE_AUTH=off`, не рекомендуется).
+
+## 12. Самостоятельная регистрация и оплата (Stripe)
+
+Без настроек Stripe фирма может зарегистрироваться на `/#/signup` и получает пробный период
+`TRIAL_DAYS` (30 дней). Регистрацию можно выключить: `SIGNUP=off`.
+
+1. Stripe → Products → цена с ежемесячной оплатой (за клиента или за фирму).
+2. Developers → Webhooks → адрес `https://app.pescada.io/webhooks/stripe`, события
+   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.payment_failed`.
+3. `deploy/.env`:
+   ```
+   STRIPE_SECRET_KEY=...
+   STRIPE_PRICE_ID=price_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   STRIPE_QUANTITY=clients     # или firm — одна подписка на фирму
+   ```
+Фирмы, созданные командой `create-firm`, работают без оплаты (план internal).
+Если подписка не оплачена, фирма видит всё, но не может создавать новое; клиенты не блокируются.
+
+## 13. Банковские выписки напрямую из банка (GoCardless)
+
+1. Зарегистрируйтесь в GoCardless Bank Account Data, получите Secret ID и Secret Key.
+2. `deploy/.env`: `GOCARDLESS_SECRET_ID=...`, `GOCARDLESS_SECRET_KEY=...`, перезапуск.
+Клиент подключает банк в своём пространстве; движения приходят выписками каждые 12 часов
+(`BANK_FEED_SYNC_HOURS`). Через 90 дней банк требует повторного подтверждения — клиент получает письмо.
+GoCardless и Stripe уже указаны в списке субподрядчиков сайта с 1 декабря 2026.
+
+## 14. Сайт pescada.io
+
+- Заявки с формы демо приходят на `DEMO_EMAIL` (по умолчанию hello@pescada.io).
+- Статистика без cookies: Cloudflare → Web Analytics → добавить сайт → скопировать token в
+  `site/src/company.mjs` (`analyticsToken`) и пересобрать сайт.
+
 ## Полезные команды
 
 ```sh

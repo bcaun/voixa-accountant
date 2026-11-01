@@ -33,7 +33,7 @@ const dir = await mkdtemp(path.join(tmpdir(), 'pescada-bank-'));
 delete process.env.ANTHROPIC_API_KEY;
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
-  MAIL_TRANSPORT: 'memory', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
+  MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
   GOCARDLESS_SECRET_ID: 'id', GOCARDLESS_SECRET_KEY: 'key', GOCARDLESS_API_BASE: `http://127.0.0.1:${gc.address().port}`,
 });
 const { pool } = await import('../src/db.js');

@@ -5,6 +5,7 @@ import { config } from './config.js';
 import { query } from './db.js';
 import { sha256 } from './ledger.js';
 import { queueEmail, renderEmail, flushEmails } from './mailer.js';
+import { translator, langFor } from './i18n.js';
 
 const COOKIE = 'vx_session';
 
@@ -17,16 +18,24 @@ export async function createLoginLink(userId, db = { query }) {
 
 export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName, team } = {}) {
   const url = await createLoginLink(user.id, client);
-  const heading = invitedBy ? `${invitedBy} invited you to ${companyName}` : 'Sign in to Pescada';
+  // the person's language, or that of their firm or company
+  const { rows: [c] } = await client.query(
+    `select coalesce((select f.country from firms f where f.id = $2), (select co.country from companies co where co.id = $3),
+       (select co.country from memberships m join companies co on co.id = m.company_id where m.user_id = $1 order by m.created_at limit 1)) as country`,
+    [user.id, user.firm_id || null, companyId || null]);
+  const t = translator(langFor(user, c?.country));
+  const mins = config.loginLinkMinutes;
+  const heading = invitedBy ? t('{who} invited you to {company}', { who: invitedBy, company: companyName }) : t('Sign in to Pescada');
   const lines = team
-    ? [`You have been added to the ${firmName} team on Pescada, where the firm exchanges documents with its clients and every step is recorded.`,
-       `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
+    ? [t('You have been added to the {firm} team on Pescada, where the firm exchanges documents with its clients and every step is recorded.', { firm: firmName }),
+       t('The button below signs you in. It works once and expires in {mins} minutes; you can always request a new link on the sign-in page.', { mins })]
     : invitedBy
-    ? [`You now have access to the ${companyName} workspace on Pescada, where documents are exchanged with ${firmName || 'your accountant'} and every step is recorded.`,
-       `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
-    : [`Use the button below to sign in. The link works once and expires in ${config.loginLinkMinutes} minutes.`,
-       'If you did not ask for this, ignore this email.'];
-  const { html, text } = renderEmail({ heading, lines, button: { label: 'Sign in', url }, footer: `${firmName ? `${firmName} · ` : ''}Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.` });
+      ? [t('You now have access to the {company} workspace on Pescada, where documents are exchanged with {firm} and every step is recorded.', { company: companyName, firm: firmName || t('your accountant') }),
+         t('The button below signs you in. It works once and expires in {mins} minutes; you can always request a new link on the sign-in page.', { mins })]
+      : [t('Use the button below to sign in. The link works once and expires in {mins} minutes.', { mins }), t('If you did not ask for this, ignore this email.')];
+  const footer = firmName ? t('{firm} · Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.', { firm: firmName })
+    : t('Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.');
+  const { html, text } = renderEmail({ heading, lines, button: { label: t('Sign in'), url }, footer });
   await queueEmail(client, { companyId, toUserId: user.id, toEmail: user.email, kind: invitedBy ? 'invite' : 'login', subject: heading, html, text });
 }
 

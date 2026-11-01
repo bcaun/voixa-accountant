@@ -15,6 +15,7 @@ import { appendEvent, lockCompany } from './ledger.js';
 import { createDocument, SYSTEM } from './items.js';
 import { queueEmail, renderEmail, flushEmails } from './mailer.js';
 import { processJobs } from './recognition/recognize.js';
+import { translator, langFor } from './i18n.js';
 
 const CATEGORY = [
   [/\b(factura|fattura|facture|rechnung|fatura|invoice|ricevuta|recibo)/i, 'Invoice'],
@@ -78,11 +79,12 @@ export async function handleInbound(p) {
     for (const f of files) {
       await createDocument(c, { user: member, company, file: f, category: guessCategory(subject, f.name), period: '', note, requestId: null });
     }
-    const { html, text } = renderEmail({ heading: `Received: ${files.length} document${files.length === 1 ? '' : 's'}`,
-      lines: [`${company.firm_name} has received what you sent to the ${company.name} workspace:`, ...files.map((f) => `• ${f.name} (SHA-256 ${f.sha256.slice(0, 16)}…)`),
-        'Each file is now in the workspace, and every step is recorded in its log.'],
-      button: { label: 'Open the workspace', url: `${config.appUrl}/#/c/${company.id}` } });
-    await queueEmail(c, { companyId: company.id, toUserId: member.id, toEmail: member.email, kind: 'email_in_receipt', subject: `Received: ${subject || `${files.length} document(s)`}`, html, text });
+    const t = translator(langFor(member, company.country));
+    const { html, text } = renderEmail({ heading: files.length === 1 ? t('Received: 1 document') : t('Received: {n} documents', { n: files.length }),
+      lines: [t('{firm} has received what you sent to the {company} workspace:', { firm: company.firm_name, company: company.name }), ...files.map((f) => `• ${f.name} (SHA-256 ${f.sha256.slice(0, 16)}…)`),
+        t('Each file is now in the workspace, and every step is recorded in its log.')],
+      button: { label: t('Open the workspace'), url: `${config.appUrl}/#/c/${company.id}` } });
+    await queueEmail(c, { companyId: company.id, toUserId: member.id, toEmail: member.email, kind: 'email_in_receipt', subject: t('Received: {subject}', { subject: subject || String(files.length) }), html, text });
     return { status: 'accepted', count: files.length, companyId: company.id };
   }).catch(async (err) => {
     await Promise.all(files.map((f) => storage.remove(f.key).catch(() => {})));

@@ -6,6 +6,7 @@ import { pool, tx } from './db.js';
 import { renderEmail } from './mailer.js';
 import { tzOf } from './countries.js';
 import { refOf } from './items.js';
+import { translator, langFor } from './i18n.js';
 
 const localParts = (d, tz) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false })
@@ -25,7 +26,7 @@ export function digestDue(u, now, oldestEntryAt) {
 /** Send every digest that is due. `force` sends all pending ones now (tests, manual runs). */
 export async function sendDigests(now = new Date(), { force = false } = {}) {
   const { rows: people } = await pool.query(
-    `select u.id, u.email, u.name, u.digest_hour, u.last_digest_at, coalesce(f.country, 'ES') as country, f.name as firm_name,
+    `select u.id, u.email, u.name, u.lang, u.digest_hour, u.last_digest_at, coalesce(f.country, 'ES') as country, f.name as firm_name,
             min(d.created_at) as oldest
      from digest_entries d join users u on u.id = d.user_id left join firms f on f.id = u.firm_id
      where d.email_id is null and u.disabled_at is null group by u.id, f.id`);
@@ -43,18 +44,20 @@ export async function sendDigests(now = new Date(), { force = false } = {}) {
         if (!byCompany.has(e.company_id)) byCompany.set(e.company_id, []);
         byCompany.get(e.company_id).push(e);
       }
+      const t = translator(langFor(u, u.country));
       const lines = [];
       for (const list of byCompany.values()) {
         const first = list[0];
-        lines.push(`${first.company_name} (#${first.company_no}): ${list.length} update${list.length === 1 ? '' : 's'}`);
+        lines.push(list.length === 1 ? t('{company} (#{no}): 1 update', { company: first.company_name, no: first.company_no })
+          : t('{company} (#{no}): {n} updates', { company: first.company_name, no: first.company_no, n: list.length }));
         for (const e of list) lines.push(`• ${e.item_seq ? `${refOf({ no: first.company_no }, { seq: e.item_seq })} ` : ''}${e.line}`);
       }
       const n = entries.length, m = byCompany.size;
-      const subject = `Pescada daily summary: ${n} update${n === 1 ? '' : 's'} from ${m} client${m === 1 ? '' : 's'}`;
+      const subject = t(`Pescada daily summary: {n} update${n === 1 ? '' : 's'} from {m} client${m === 1 ? '' : 's'}`, { n, m });
       const { html, text } = renderEmail({
-        heading: 'Your daily summary', lines,
-        button: { label: 'Open Pescada', url: `${config.appUrl}/` },
-        footer: `${u.firm_name ? `${u.firm_name} · ` : ''}Pescada. Every item listed is marked as notified in its workspace log when this email is sent. You can switch to one email per event in your account settings.`,
+        heading: t('Your daily summary'), lines,
+        button: { label: t('Open Pescada'), url: `${config.appUrl}/` },
+        footer: `${u.firm_name ? `${u.firm_name} · ` : ''}${t('Pescada. Every item listed is marked as notified in its workspace log when this email is sent. You can switch to one email per event in your account settings.')}`,
       });
       const { rows: [msg] } = await c.query(
         `insert into email_messages (company_id, item_id, to_user_id, to_email, kind, subject, html, body_text)

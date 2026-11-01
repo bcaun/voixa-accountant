@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
-  MAIL_TRANSPORT: 'memory', SCHEDULER: 'off', ALERT_EMAIL: 'ops@pescada.io', WEBHOOK_TOKEN: 'hook',
+  MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', SCHEDULER: 'off', ALERT_EMAIL: 'ops@pescada.io', WEBHOOK_TOKEN: 'hook',
 });
 const { alert } = await import('../src/alerts.js');
 const { sentMail } = await import('../src/mailer.js');

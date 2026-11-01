@@ -112,6 +112,19 @@ exports, the append-only guard and detection of a tampered log.
   to the Anthropic API; cover this in the client agreement and your data-processing records (GDPR).
   Without a key, Norma 43, camt.053 and CSV statements are still read, and other files are marked as
   not readable with a note explaining what to upload instead.
+- **Secrets and alerts:** set `SECRET_KEY` (32 random bytes, hex; encrypts two-factor secrets) and
+  `ALERT_EMAIL` (errors, failed deliveries, stuck jobs). Monitor `/healthz/deep?token=<WEBHOOK_TOKEN>`
+  from outside, and run `deploy/restore-test.sh` monthly and `node src/cli.js verify-all` on demand.
+- **Virus scanning:** `CLAMAV_HOST`/`CLAMAV_PORT` point at clamd (the `clamav` service in the production
+  compose file, ~1.5 GB RAM). Without it uploads are stored with scan status `pending` and rescanned later.
+- **Languages:** emails go out in the person's chosen language, otherwise by the firm's (accountants) or
+  client's (clients) country; `EMAIL_LANG=en|es|it|fr|de|pt` forces one language (default `auto`).
+- **Email-in:** `INBOUND_DOMAIN` plus a Postmark inbound stream posting to
+  `/webhooks/postmark-inbound?token=<WEBHOOK_TOKEN>`; mail must pass SPF or DKIM.
+- **Billing:** `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` (webhook `/webhooks/stripe`),
+  `STRIPE_QUANTITY=clients|firm`; `SIGNUP=off` disables self-signup, `TRIAL_DAYS` sets the trial.
+- **Bank feeds:** `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`, `BANK_FEED_SYNC_HOURS` (default 12).
+- **Closing clients:** `CLOSE_EXPORT_DAYS` (30) export window, then blocked; purged after `RETENTION_YEARS` (6).
 - **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,
   `list-firms`). Clients are invited from the app. A firm can change its name and default country in the app.
 

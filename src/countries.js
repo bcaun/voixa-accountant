@@ -76,6 +76,9 @@ export const COUNTRIES = {
 };
 
 export const COUNTRY_CODES = Object.keys(COUNTRIES);
+export const LANGS = ['en', 'es', 'it', 'fr', 'de', 'pt'];
+/** The language people in a country are written to by default. */
+export const langOfCountry = (code) => ({ ES: 'es', IT: 'it', FR: 'fr', DE: 'de', PT: 'pt' }[code] || 'en');
 export const isCountry = (c) => COUNTRY_CODES.includes(c);
 export const countryOf = (code) => COUNTRIES[code] || COUNTRIES.ES;
 export const tzOf = (code) => countryOf(code).tz;

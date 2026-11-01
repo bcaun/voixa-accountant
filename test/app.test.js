@@ -10,7 +10,7 @@ import path from 'node:path';
 const dir = await mkdtemp(path.join(tmpdir(), 'voixa-test-'));
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
-  MAIL_TRANSPORT: 'memory', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off',
+  MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off',
   APP_URL: 'http://localhost', WEBHOOK_TOKEN: 'hook-secret', FIRM_NAME: 'Voixa Accounting',
 });
 

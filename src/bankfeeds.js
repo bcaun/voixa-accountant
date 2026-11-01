@@ -146,8 +146,8 @@ async function expire(conn) {
     await c.query(`update bank_connections set status = 'expired' where id = $1`, [conn.id]);
     const { rows: [company] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [conn.company_id]);
     await appendEvent(c, { companyId: conn.company_id, actor: SYSTEM, type: 'bank_expired', text: `Access to ${conn.institution_name} has ended. Connect the bank again to keep statements coming.` });
-    await notify(c, { company, item: null, side: 'client', kind: 'reminder', subject: `Reconnect ${conn.institution_name}`, heading: 'Your bank connection has ended',
-      lines: [`The automatic statements from ${conn.institution_name} have stopped because the bank's 90-day authorisation ended.`, 'Open the workspace and connect the bank again; it takes a minute.'] });
+    await notify(c, { company, item: null, side: 'client', kind: 'reminder', msg: (t) => ({ subject: t('Reconnect {bank}', { bank: conn.institution_name }), heading: t('Your bank connection has ended'),
+      lines: [t('The automatic statements from {bank} have stopped because the bank’s 90-day authorisation ended.', { bank: conn.institution_name }), t('Open the workspace and connect the bank again; it takes a minute.')] }) });
   });
   return 0;
 }

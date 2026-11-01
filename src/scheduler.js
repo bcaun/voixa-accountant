@@ -78,8 +78,8 @@ export async function rescanPending() {
         text: `The virus scan found malware (${r.signature}) in “${v.file_name}” (version ${v.version}). The file is blocked and cannot be opened.`,
         data: { signature: r.signature, version: v.version } });
       for (const side of ['client', 'accountant']) {
-        await notify(c, { company, item, side, kind: 'virus', subject: `Blocked file: ${item.title}`, heading: 'A file was blocked by the virus scan',
-          lines: [`“${v.file_name}” in ${company.name} contains malware (${r.signature}) and has been blocked.`, 'Do not open copies of it you may have downloaded. Ask the sender for a clean copy.'] });
+        await notify(c, { company, item, side, kind: 'virus', msg: (t) => ({ subject: t('Blocked file: {title}', { title: item.title }), heading: t('A file was blocked by the virus scan'),
+          lines: [t('“{file}” in {company} contains malware ({signature}) and has been blocked.', { file: v.file_name, company: company.name, signature: r.signature }), t('Do not open copies of it you may have downloaded. Ask the sender for a clean copy.')] }) });
       }
     });
   }
@@ -117,8 +117,9 @@ async function autoReminders(now) {
       const line = toSender ? `“${it.title}” is due ${fmtDay(it.due_at, tzOf(it.company.country))} and has not been sent to ${it.company.name} yet.` : reminderLine(fresh, it.company);
       await appendEvent(c, { companyId: it.company_id, itemId: it.id, actor: SYSTEM, type: 'auto_reminder',
         text: `Automatic reminder to the ${side === 'client' ? 'client' : 'accountant'}: ${line}`, data: { side, number: it.auto_reminders + 1 } });
-      await notify(c, { company: it.company, item: fresh, side, kind: 'auto_reminder',
-        subject: `Reminder: ${it.title}`, heading: toSender ? 'A report is due soon' : 'This is still waiting for you', lines: [line] });
+      await notify(c, { company: it.company, item: fresh, side, kind: 'auto_reminder', msg: (t, f) => ({
+        subject: t('Reminder: {title}', { title: it.title }), heading: toSender ? t('A report is due soon') : t('This is still waiting for you'),
+        lines: [toSender ? t('“{title}” is due {date} and has not been sent to {company} yet.', { title: it.title, date: f.day(it.due_at), company: it.company.name }) : reminderLine(fresh, it.company, t, f)] }) });
       await recompute(c, it.id);
     });
     n++;

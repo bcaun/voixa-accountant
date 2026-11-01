@@ -23,7 +23,7 @@ const port = await startClamd();
 const dir = await mkdtemp(path.join(tmpdir(), 'pescada-av-'));
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
-  MAIL_TRANSPORT: 'memory', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
+  MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
   CLAMAV_HOST: '127.0.0.1', CLAMAV_PORT: String(port), CLAMAV_TIMEOUT_MS: '3000',
 });
 const { pool } = await import('../src/db.js');

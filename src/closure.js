@@ -28,10 +28,11 @@ export async function closeCompany(c, { user, company, reason }) {
   const keepFrom = last.at ? new Date(last.at) : now;
   const purgeAfter = new Date(Math.max(exportUntil.getTime(), keepFrom.getTime() + config.retentionYears * 365.25 * DAY));
   // tell the client's people before their access ends
-  await notify(c, { company, item: null, side: 'client', kind: 'closed', subject: `${company.firm_name} has closed the ${company.name} workspace`,
-    heading: 'This workspace has been closed', lines: [
-      `${company.firm_name} has closed the ${company.name} workspace on Pescada. You can no longer sign in to it.`,
-      'If you need copies of your documents or of the activity log, ask your accountant: they can export everything until ' + fmtDay(exportUntil, tzOf(company.country)) + '.'] });
+  await notify(c, { company, item: null, side: 'client', kind: 'closed', msg: (t, f) => ({
+    subject: t('{firm} has closed the {company} workspace', { firm: company.firm_name, company: company.name }),
+    heading: t('This workspace has been closed'), lines: [
+      t('{firm} has closed the {company} workspace on Pescada. You can no longer sign in to it.', { firm: company.firm_name, company: company.name }),
+      t('If you need copies of your documents or of the activity log, ask your accountant: they can export everything until {date}.', { date: f.day(exportUntil) })] }) });
   await c.query('update companies set closed_at = $2, closed_by = $3, export_until = $4, purge_after = $5 where id = $1',
     [company.id, now, user.id, exportUntil, purgeAfter]);
   await appendEvent(c, { companyId: company.id, actor: actorOf(user), type: 'workspace_closed',

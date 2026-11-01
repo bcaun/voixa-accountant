@@ -7,6 +7,7 @@ import { queueEmail, renderEmail } from './mailer.js';
 import { HttpError, actorOf } from './auth.js';
 import { fmtDay as fmtDayTz, fmtTime as fmtTimeTz } from './dates.js';
 import { tzOf } from './countries.js';
+import { translator, langFor, dayIn, timeIn } from './i18n.js';
 import { enqueueRecognition } from './recognition/recognize.js';
 
 export const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
@@ -17,7 +18,6 @@ export const refOf = (company, item) => `PX-${String(company.no).padStart(3, '0'
 // dates are shown in the client's country time
 const fmtDay = (d, company) => fmtDayTz(d, tzOf(company?.country));
 const fmtTime = (d, company) => fmtTimeTz(d, tzOf(company?.country));
-const doneWord = (kind) => (kind === 'doc' ? 'confirmed receipt of' : kind === 'report' ? 'approved' : 'fulfilled');
 
 /** Derive an item's status from its events (oldest first). */
 export function computeStatus(kind, events) {
@@ -65,11 +65,11 @@ export async function sideUsers(c, companyId, side) {
   if (side === 'accountant') {
     // the accountants of the firm the client belongs to, and no one else
     return (await c.query(
-      `select u.id, u.email, u.name, u.role, u.notify_mode from users u join companies co on co.firm_id = u.firm_id
+      `select u.id, u.email, u.name, u.role, u.notify_mode, u.lang from users u join companies co on co.firm_id = u.firm_id
        where co.id = $1 and u.role = 'accountant' and u.disabled_at is null and accountant_sees(co.id, u.id)`, [companyId])).rows;
   }
   return (await c.query(
-    `select u.id, u.email, u.name, u.role, u.notify_mode from memberships m join users u on u.id = m.user_id
+    `select u.id, u.email, u.name, u.role, u.notify_mode, u.lang from memberships m join users u on u.id = m.user_id
      where m.company_id = $1 and m.removed_at is null and u.disabled_at is null`, [companyId])).rows;
 }
 
@@ -77,18 +77,26 @@ export async function sideUsers(c, companyId, side) {
 export const URGENT = new Set(['changes', 'auto_reminder', 'reminder', 'email_problem', 'virus']);
 export const notifyModeOf = (u) => u.notify_mode || (u.role === 'accountant' ? 'digest' : 'instant');
 
-export async function notify(c, { company, item, side, kind, subject, heading, lines, exceptUserId }) {
+/**
+ * Email (or queue for the digest) one side of a workspace. `msg(t, f)` writes the message in each
+ * recipient's language: `t` translates, `f.day` and `f.time` format dates for them.
+ */
+export async function notify(c, { company, item, side, kind, msg, exceptUserId }) {
   const url = `${config.appUrl}/#/c/${company.id}${item ? `/i/${item.id}` : ''}`;
+  const tz = tzOf(company.country);
   for (const u of await sideUsers(c, company.id, side)) {
     if (u.id === exceptUserId) continue;
+    const lang = langFor(u, u.role === 'accountant' ? company.firm_country : company.country);
+    const t = translator(lang);
+    const { subject, heading, lines } = msg(t, { day: (d) => dayIn(d, tz, lang), time: (d) => timeIn(d, tz, lang), lang });
     if (notifyModeOf(u) === 'digest' && !URGENT.has(kind)) {
       // collected for the daily digest; the item shows as notified when the digest is sent
       await c.query('insert into digest_entries (user_id, company_id, item_id, kind, subject, line) values ($1,$2,$3,$4,$5,$6)',
         [u.id, company.id, item?.id ?? null, kind, subject, lines[0] || heading]);
       continue;
     }
-    const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Pescada' : 'Open the workspace', url },
-      footer: `${company.firm_name} · Pescada. This message and every action on the document are recorded in the workspace log.` });
+    const { html, text } = renderEmail({ heading, lines, button: { label: item ? t('Open in Pescada') : t('Open the workspace'), url },
+      footer: t('{firm} · Pescada. This message and every action on the document are recorded in the workspace log.', { firm: company.firm_name }) });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });
   }
 }
@@ -152,10 +160,12 @@ export async function createDocument(c, { user, company, file, category, period,
     await recompute(c, request.id);
   }
   await notify(c, { company, item: it, side: 'accountant', kind: 'new_document',
-    subject: `New document from ${company.name}: ${it.title}`,
-    heading: `${company.name} sent you a document`,
-    lines: [`${actorOf(user).name} uploaded “${file.name}” (${fmtSize(file.size)})${request ? ` in response to “${request.title}”` : ''}.`,
-      note ? `Note: ${note}` : 'Open it in Pescada and confirm receipt.'] });
+    msg: (t) => ({
+      subject: t('New document from {company}: {title}', { company: company.name, title: it.title }),
+      heading: t('{company} sent you a document', { company: company.name }),
+      lines: [request ? t('{who} uploaded “{file}” ({size}) in response to “{request}”.', { who: actorOf(user).name, file: file.name, size: fmtSize(file.size), request: request.title })
+        : t('{who} uploaded “{file}” ({size}).', { who: actorOf(user).name, file: file.name, size: fmtSize(file.size) }),
+      note ? t('Note: {note}', { note }) : t('Open it in Pescada and confirm receipt.')] }) });
   await recompute(c, it.id);
   return it;
 }
@@ -178,11 +188,12 @@ export async function createReport(c, { user, company, file, title, category, du
     data: { version: 1, file: file.name, size: file.size, sha256: file.sha256, due_at: it.due_at, late: !!late } });
   if (note) await appendEvent(c, { companyId: company.id, itemId: it.id, actor: actorOf(user), type: 'comment', text: `${actorOf(user).name}: “${note}”`, data: { message: note } });
   await notify(c, { company, item: it, side: 'client', kind: 'new_report',
-    subject: `${company.firm_name}: ${it.title}`,
-    heading: `New report: ${it.title}`,
-    lines: [`${actorOf(user).name} at ${company.firm_name} sent you “${file.name}”.`,
-      it.due_at ? `Deadline: ${fmtDay(it.due_at, company)}. Please open it and approve it, or ask for changes.` : 'Please open it and approve it, or ask for changes.',
-      ...(note ? [`Message: ${note}`] : [])] });
+    msg: (t, f) => ({
+      subject: `${company.firm_name}: ${it.title}`,
+      heading: t('New report: {title}', { title: it.title }),
+      lines: [t('{who} at {firm} sent you “{file}”.', { who: actorOf(user).name, firm: company.firm_name, file: file.name }),
+        it.due_at ? t('Deadline: {date}. Please open it and approve it, or ask for changes.', { date: f.day(it.due_at) }) : t('Please open it and approve it, or ask for changes.'),
+        ...(note ? [t('Message: {note}', { note })] : [])] }) });
   await recompute(c, it.id);
   return it;
 }
@@ -194,9 +205,10 @@ export async function createRequest(c, { user, company, title, dueAt, note, cate
   await appendEvent(c, { companyId: company.id, itemId: it.id, actor, type: 'requested',
     text: `${actor.name} requested “${title}”, due ${fmtDay(dueAt, company)}${obligationId ? ' (recurring)' : ''}`, data: { due_at: dueAt, obligation_id: obligationId ?? null } });
   await notify(c, { company, item: it, side: 'client', kind: 'request',
-    subject: `Document needed by ${fmtDay(dueAt, company)}: ${title}`,
-    heading: `${company.firm_name} needs a document`,
-    lines: [`Please upload: ${title}.`, `Due: ${fmtDay(dueAt, company)}.`, ...(note ? [note] : [])] });
+    msg: (t, f) => ({
+      subject: t('Document needed by {date}: {title}', { date: f.day(dueAt), title }),
+      heading: t('{firm} needs a document', { firm: company.firm_name }),
+      lines: [t('Please upload: {title}.', { title }), t('Due: {date}.', { date: f.day(dueAt) }), ...(note ? [note] : [])] }) });
   await recompute(c, it.id);
   return it;
 }
@@ -223,10 +235,12 @@ export async function replaceVersion(c, { user, company, item, file, reason }) {
     data: { version: v.version, file: file.name, size: file.size, sha256: file.sha256, previous_version: prev.version, previous_sha256: prev.sha256, reason } });
   const side = recipientSide(item.kind);
   await notify(c, { company, item, side, kind: 'replaced',
-    subject: `Updated file: ${item.title}`,
-    heading: `A new version of “${item.title}” was sent`,
-    lines: [`${actorOf(user).name} replaced version ${prev.version} with version ${v.version} (“${file.name}”).`, `Reason: ${reason}`,
-      `The earlier version is kept. Please open the new one and ${item.kind === 'doc' ? 'confirm receipt' : 'approve it'} again.`] });
+    msg: (t) => ({
+      subject: t('Updated file: {title}', { title: item.title }),
+      heading: t('A new version of “{title}” was sent', { title: item.title }),
+      lines: [t('{who} replaced version {old} with version {new} (“{file}”).', { who: actorOf(user).name, old: prev.version, new: v.version, file: file.name }),
+        t('Reason: {reason}', { reason }),
+        item.kind === 'doc' ? t('The earlier version is kept. Please open the new one and confirm receipt again.') : t('The earlier version is kept. Please open the new one and approve it again.')] }) });
   return recompute(c, item.id);
 }
 
@@ -256,9 +270,11 @@ export async function confirm(c, { user, company, item }) {
   await appendEvent(c, { companyId: company.id, itemId: item.id, actor: actorOf(user), type: 'confirmed',
     text: `${actorOf(user).name} ${item.kind === 'report' ? 'approved the report' : 'confirmed receipt'} (version ${item.version})`, data: { version: item.version } });
   await notify(c, { company, item, side: senderSide(item.kind), kind: 'confirmed',
-    subject: `${item.kind === 'report' ? 'Approved' : 'Received'}: ${item.title}`,
-    heading: `${actorOf(user).name} ${doneWord(item.kind)} “${item.title}”`,
-    lines: [`Version ${item.version} was ${item.kind === 'report' ? 'approved' : 'confirmed as received'} on ${fmtTime(new Date(), company)}.`, 'This is recorded in the workspace log.'] });
+    msg: (t, f) => ({
+      subject: item.kind === 'report' ? t('Approved: {title}', { title: item.title }) : t('Received: {title}', { title: item.title }),
+      heading: item.kind === 'report' ? t('{who} approved “{title}”', { who: actorOf(user).name, title: item.title }) : t('{who} confirmed receipt of “{title}”', { who: actorOf(user).name, title: item.title }),
+      lines: [item.kind === 'report' ? t('Version {v} was approved on {time}.', { v: item.version, time: f.time(new Date()) }) : t('Version {v} was confirmed as received on {time}.', { v: item.version, time: f.time(new Date()) }),
+        t('This is recorded in the workspace log.')] }) });
   return recompute(c, item.id);
 }
 
@@ -269,7 +285,8 @@ export async function requestChanges(c, { user, company, item, message }) {
   await appendEvent(c, { companyId: company.id, itemId: item.id, actor: actorOf(user), type: 'changes_requested',
     text: `${actorOf(user).name} asked for changes: “${message}”`, data: { message } });
   await notify(c, { company, item, side: 'accountant', kind: 'changes',
-    subject: `Changes requested: ${item.title}`, heading: `${company.name} asked for changes`, lines: [`“${message}”`, `Report: ${item.title}`] });
+    msg: (t) => ({ subject: t('Changes requested: {title}', { title: item.title }), heading: t('{company} asked for changes', { company: company.name }),
+      lines: [`“${message}”`, t('Report: {title}', { title: item.title })] }) });
   return recompute(c, item.id);
 }
 
@@ -278,7 +295,8 @@ export async function comment(c, { user, company, item, message }) {
   await appendEvent(c, { companyId: company.id, itemId: item.id, actor: actorOf(user), type: 'comment',
     text: `${actorOf(user).name}: “${message}”`, data: { message } });
   await notify(c, { company, item, side: user.role === 'client' ? 'accountant' : 'client', kind: 'comment',
-    subject: `New note on ${item.title}`, heading: `${actorOf(user).name} added a note`, lines: [`“${message}”`, `On: ${item.title}`] });
+    msg: (t) => ({ subject: t('New note on {title}', { title: item.title }), heading: t('{who} added a note', { who: actorOf(user).name }),
+      lines: [`“${message}”`, t('On: {title}', { title: item.title })] }) });
   return recompute(c, item.id);
 }
 
@@ -289,13 +307,14 @@ export async function remind(c, { user, company, item }) {
   await appendEvent(c, { companyId: company.id, itemId: item.id, actor: actorOf(user), type: 'reminder',
     text: `${actorOf(user).name} sent a reminder`, data: {} });
   await notify(c, { company, item, side, kind: 'reminder',
-    subject: `Reminder: ${item.title}`, heading: `Reminder from ${actorOf(user).name}`,
-    lines: [reminderLine(item, company)] });
+    msg: (t, f) => ({ subject: t('Reminder: {title}', { title: item.title }), heading: t('Reminder from {who}', { who: actorOf(user).name }),
+      lines: [reminderLine(item, company, t, f)] }) });
   return recompute(c, item.id);
 }
 
-export function reminderLine(item, company) {
-  if (item.kind === 'request') return `“${item.title}” is due ${item.due_at ? fmtDay(item.due_at, company) : 'soon'} and has not been uploaded yet.`;
-  if (item.state === 'opened') return `“${item.title}” was opened but not yet ${item.kind === 'doc' ? 'confirmed as received' : 'approved'}.`;
-  return `“${item.title}” is waiting for you and has not been opened yet.`;
+/** The reminder sentence; in English for the log, or in a recipient's language with `t` and `f`. */
+export function reminderLine(item, company, t = (s, v) => s.replace(/\{(\w+)\}/g, (m, k) => v?.[k] ?? m), f = { day: (d) => fmtDay(d, company) }) {
+  if (item.kind === 'request') return item.due_at ? t('“{title}” is due {date} and has not been uploaded yet.', { title: item.title, date: f.day(item.due_at) }) : t('“{title}” is due soon and has not been uploaded yet.', { title: item.title });
+  if (item.state === 'opened') return item.kind === 'doc' ? t('“{title}” was opened but not yet confirmed as received.', { title: item.title }) : t('“{title}” was opened but not yet approved.', { title: item.title });
+  return t('“{title}” is waiting for you and has not been opened yet.', { title: item.title });
 }

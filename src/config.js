@@ -15,6 +15,8 @@ export const config = {
   accountantIdleHours: num(env.ACCOUNTANT_IDLE_HOURS, 12),
   secretKey: env.SECRET_KEY || '',
   alertEmail: env.ALERT_EMAIL || '',
+  // emails go out in each person's language, or their country's ('auto'); a code (en, es…) forces one for people who chose none
+  emailLang: env.EMAIL_LANG || 'auto',
   // the website's demo form posts here; requests are emailed to DEMO_EMAIL and the visitor goes back to SITE_URL
   demoEmail: env.DEMO_EMAIL || 'hello@pescada.io',
   siteUrl: (env.SITE_URL || 'https://pescada.io').replace(/\/$/, ''),

@@ -18,7 +18,7 @@ import { storage } from '../storage.js';
 import { parseUpload, discard } from '../multipart.js';
 import { verifyCompany, appendEvent, lockCompany } from '../ledger.js';
 import { parseDay } from '../dates.js';
-import { COUNTRY_CODES, countryOf, isCountry, publicCountries, tzOf } from '../countries.js';
+import { COUNTRY_CODES, countryOf, isCountry, publicCountries, tzOf, LANGS, langOfCountry } from '../countries.js';
 import * as items from '../items.js';
 import * as companies from '../companies.js';
 import { exportCsv, exportReport } from '../export.js';
@@ -118,7 +118,8 @@ api.get('/me', async (req, res) => {
                    where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
   const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
   if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn() });
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
+  const lang = u.lang || langOfCountry(firm?.country || rows[0]?.country);
+  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, lang, langChosen: u.lang || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
     firmInfo: firm, countries: publicCountries(), companies: rows, features: { bankFeeds: feedsOn() } });
 });
@@ -132,6 +133,10 @@ api.patch('/me', json, async (req, res) => {
   if (b.notifyMode !== undefined) {
     if (!['instant', 'digest'].includes(b.notifyMode)) throw new HttpError(400, 'Choose instant emails or a daily summary.');
     vals.push(b.notifyMode); sets.push(`notify_mode = $${vals.length}`);
+  }
+  if (b.lang !== undefined) {
+    if (b.lang !== null && !LANGS.includes(b.lang)) throw new HttpError(400, 'Choose a language.');
+    vals.push(b.lang); sets.push(`lang = $${vals.length}`);
   }
   if (b.digestHour !== undefined) {
     const h = Number(b.digestHour);

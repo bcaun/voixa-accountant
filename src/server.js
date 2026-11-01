@@ -6,7 +6,7 @@ import { migrate } from './migrate.js';
 import { HttpError, loadUser, redeemToken, requireAppHeader, setSessionCookie } from './auth.js';
 import { handlePostmarkWebhook } from './mailer.js';
 import { api } from './routes/api.js';
-import { authPage } from './pages.js';
+import { authPage, PAGE_LANGS } from './pages.js';
 import { handleInbound } from './inbound.js';
 import { verifyStripeSignature, handleStripeEvent } from './billing.js';
 import { finish as finishBank } from './bankfeeds.js';
@@ -103,12 +103,13 @@ export function createApp() {
 
   // Sign-in links open a page with a button instead of signing in on GET, so
   // mail scanners that pre-fetch links cannot use up the token.
+  const pageLang = (req) => req.acceptsLanguages(...PAGE_LANGS) || 'en';
   app.get('/auth/verify', (req, res) => {
-    res.send(authPage({ token: String(req.query.token || '') }));
+    res.send(authPage({ token: String(req.query.token || ''), lang: pageLang(req) }));
   });
   app.post('/auth/verify', express.urlencoded({ extended: false, limit: '4kb' }), async (req, res) => {
     const sid = await redeemToken(req.body?.token, { userAgent: req.get('user-agent'), ip: req.ip });
-    if (!sid) return res.status(400).send(authPage({ expired: true }));
+    if (!sid) return res.status(400).send(authPage({ expired: true, lang: pageLang(req) }));
     setSessionCookie(res, sid);
     res.redirect(303, '/');
   });

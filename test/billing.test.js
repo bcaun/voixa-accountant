@@ -23,7 +23,7 @@ await new Promise((r) => fake.once('listening', r));
 const dir = await mkdtemp(path.join(tmpdir(), 'pescada-bill-'));
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
-  MAIL_TRANSPORT: 'memory', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
+  MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
   STRIPE_SECRET_KEY: 'sk_test_123', STRIPE_PRICE_ID: 'price_123', STRIPE_WEBHOOK_SECRET: 'whsec_test', STRIPE_API_BASE: `http://127.0.0.1:${fake.address().port}`,
 });
 const { pool } = await import('../src/db.js');
