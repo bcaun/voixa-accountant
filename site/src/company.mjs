@@ -14,6 +14,8 @@ export const company = {
   privacyEmail: 'privacy@pescada.io',
   courtsCity: 'Barcelona',
   appUrl: 'https://app.pescada.io',
+  // Cloudflare Web Analytics (cookieless). Empty = no analytics script on the site.
+  analyticsToken: '',
   // 'draft' shows a "pending legal review" note on every legal page; set to 'final' once a lawyer has approved them
   legalStatus: 'final',
   legalVersion: '1.0',

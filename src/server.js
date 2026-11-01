@@ -11,6 +11,7 @@ import { handleInbound } from './inbound.js';
 import { verifyStripeSignature, handleStripeEvent } from './billing.js';
 import { finish as finishBank } from './bankfeeds.js';
 import { alert } from './alerts.js';
+import { sendDirect } from './mailer.js';
 import { startScheduler } from './scheduler.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -71,6 +72,27 @@ export function createApp() {
     const want = Buffer.from(config.mail.webhookToken);
     if (!want.length || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Bad token.');
     res.json(await handleInbound(req.body || {}));
+  });
+
+  // Demo requests from the website (a plain HTML form on pescada.io, no JavaScript needed)
+  const demoHits = new Map();
+  const THANKS = { en: '/thanks/', es: '/es/gracias/', it: '/it/grazie/', fr: '/fr/merci/', de: '/de/danke/', pt: '/pt/obrigado/' };
+  app.post('/public/demo', express.urlencoded({ extended: false, limit: '20kb' }), async (req, res) => {
+    const b = req.body || {};
+    const lang = THANKS[b.lang] ? b.lang : 'en';
+    const back = `${config.siteUrl}${THANKS[lang]}`;
+    if (b.website) return res.redirect(303, back); // the hidden field only robots fill in
+    const now = Date.now(), hits = (demoHits.get(req.ip) || []).filter((t) => now - t < 3600e3);
+    if (hits.length >= 5) return res.redirect(303, back);
+    demoHits.set(req.ip, [...hits, now]);
+    const f = (k, n = 300) => String(b[k] || '').trim().slice(0, n);
+    const r = { name: f('name', 200), firm: f('firm', 200), email: f('email', 200).toLowerCase(), country: f('country', 40), clients: f('clients', 40), message: f('message', 3000) };
+    if (!r.name || !r.firm || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) return res.redirect(303, `${config.siteUrl}${lang === 'en' ? '/' : `/${lang}/`}#demo`);
+    await pool.query('insert into demo_requests (name, firm, email, country, clients, message, lang, ip) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [r.name, r.firm, r.email, r.country, r.clients, r.message, lang, req.ip]);
+    await sendDirect(config.demoEmail, `Demo request: ${r.firm} (${r.country || lang.toUpperCase()})`,
+      `Name: ${r.name}\nFirm: ${r.firm}\nEmail: ${r.email}\nCountry: ${r.country}\nClients: ${r.clients}\nLanguage: ${lang}\n\n${r.message}`).catch((err) => console.error('demo mail', err.message));
+    res.redirect(303, back);
   });
 
   // The bank sends the client back here after they authorised access

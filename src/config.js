@@ -15,6 +15,9 @@ export const config = {
   accountantIdleHours: num(env.ACCOUNTANT_IDLE_HOURS, 12),
   secretKey: env.SECRET_KEY || '',
   alertEmail: env.ALERT_EMAIL || '',
+  // the website's demo form posts here; requests are emailed to DEMO_EMAIL and the visitor goes back to SITE_URL
+  demoEmail: env.DEMO_EMAIL || 'hello@pescada.io',
+  siteUrl: (env.SITE_URL || 'https://pescada.io').replace(/\/$/, ''),
   loginLinkMinutes: num(env.LOGIN_LINK_MINUTES, 30),
   maxUploadMb: num(env.MAX_UPLOAD_MB, 25),
   // closing a client: days the firm can still export, and years documents are kept after upload

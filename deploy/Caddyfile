@@ -19,7 +19,8 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
-		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		# the demo form posts to the app; Cloudflare Web Analytics (cookieless) is allowed for when it is switched on
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'none'; form-action https://{$DOMAIN}"
 	}
 	# pages are always checked for a newer version; the stylesheet is linked with a content hash, so it can be kept
 	@pages not path /fonts/* /favicon.svg /styles.css
@@ -28,8 +29,10 @@
 	@static path /fonts/* /favicon.svg
 	header @static Cache-Control "public, max-age=2592000"
 	handle_errors {
-		rewrite * /index.html
-		file_server
+		rewrite * /404.html
+		file_server {
+			status 404
+		}
 	}
 }
 

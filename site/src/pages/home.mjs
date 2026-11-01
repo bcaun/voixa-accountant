@@ -1,8 +1,8 @@
-import { company, demoHref } from '../company.mjs';
+import { company } from '../company.mjs';
 
 // Icons from the brand kit: 24 px grid, stroke 1.75, round caps and joins.
 const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-const I = {
+export const I = {
   send: icon('<path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>'),
   notify: icon('<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9Z"/><path d="M10 20a2 2 0 0 0 4 0"/>'),
   open: icon('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'),
@@ -15,14 +15,14 @@ const I = {
 const STEP_KEYS = ['sent', 'notified', 'opened', 'confirmed'];
 const STEP_ICONS = [I.send, I.notify, I.open, I.confirm];
 
-function home(t, lang) {
+export function home(t, lang) {
   return `
 <section class="hero"><div class="wrap">
   <div class="hero-text">
     <p class="eyebrow">${t.eyebrow}</p>
     <h1>${t.h1}</h1>
     <p class="lead">${t.lead}</p>
-    <div class="cta"><a class="btn primary" href="${demoHref(lang)}">${t.demo}</a><a class="btn outline" href="#how">${t.how}</a></div>
+    <div class="cta"><a class="btn primary" href="#demo">${t.demo}</a><a class="btn outline" href="#how">${t.how}</a></div>
     <p class="fine">${t.fine}</p>
   </div>
   <div class="horizon" role="img" aria-label="${t.visualAria}">
@@ -56,20 +56,38 @@ function home(t, lang) {
   <div class="cards-deep">${t.secCards.map(([ic, b, s]) => `<div>${I[ic]}<b>${b}</b><span>${s}</span></div>`).join('')}</div>
 </div></section>
 
-<section class="demo"><div class="wrap">
+<section class="demo" id="demo"><div class="wrap">
   <h2>${t.closeTitle}</h2>
   <p class="lead">${t.closeLead}</p>
-  <a class="btn dark" href="${demoHref(lang)}">${t.demo}</a>
+  ${demoForm(t.form, lang, t.demo)}
   <p class="fine">${t.closeFine}</p>
 </div></section>`;
 }
 
-const en = {
+/** The demo request form posts to the app (no JavaScript); the visitor lands on the thank-you page. */
+export function demoForm(f, lang, button) {
+  const countries = [['Spain', f.countries[0]], ['Italy', f.countries[1]], ['France', f.countries[2]], ['Germany', f.countries[3]], ['Portugal', f.countries[4]], ['Other', f.countries[5]]];
+  const pre = { es: 'Spain', it: 'Italy', fr: 'France', de: 'Germany', pt: 'Portugal' }[lang];
+  return `<form class="demo-form" method="post" action="${company.appUrl}/public/demo">
+    <input type="hidden" name="lang" value="${lang}">
+    <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+    <label><span>${f.name}</span><input name="name" required autocomplete="name" maxlength="200"></label>
+    <label><span>${f.firm}</span><input name="firm" required autocomplete="organization" maxlength="200"></label>
+    <label><span>${f.email}</span><input name="email" type="email" required autocomplete="email" maxlength="200"></label>
+    <label><span>${f.country}</span><select name="country">${countries.map(([v, l]) => `<option value="${v}" ${v === pre ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label><span>${f.clients}</span><select name="clients">${['1–20', '20–50', '50–150', '150+'].map((v) => `<option>${v}</option>`).join('')}</select></label>
+    <label class="wide"><span>${f.message}</span><textarea name="message" rows="3" maxlength="3000"></textarea></label>
+    <div class="wide"><button class="btn dark" type="submit">${button}</button></div>
+    <p class="fine wide">${f.note}</p>
+  </form>`;
+}
+
+export const en = {
   eyebrow: 'Tracked document exchange for accounting firms',
   h1: 'Every document <span class="catch">caught.</span> Every step on record.',
   lead: 'Pescada is where your clients send invoices, bank statements and contracts, and where you send them reports and filings.',
   demo: 'Request a demo', how: 'See how it works',
-  fine: 'Hosted in the EU · GDPR data processing agreement · Built around Modelo 303, 111 and 390',
+  fine: 'Spain · Italy · France · Germany · Portugal · Hosted in the EU · GDPR data processing agreement',
   visualAria: 'Three tracked documents: one confirmed, one opened, one sent',
   rows: [
     ['Invoices — October.pdf', '31.10 · 09:14', 'confirmed', 'Confirmed'],
@@ -89,11 +107,11 @@ const en = {
     ['Opened', 'The first view is recorded — no more guessing.'],
     ['Confirmed', 'Receipt is acknowledged. The record is closed.'],
   ],
-  productEyebrow: 'Product', productTitle: 'Built for how a Spanish accounting firm actually works.',
+  productEyebrow: 'Product', productTitle: 'Built for how accounting firms actually work, in five countries.',
   features: [
     ['One firm, every client', 'A workspace for each client', 'Each company has its own space and can invite its own staff. Clients never see each other; your team sees them all.'],
-    ['Monthly · quarterly · yearly', 'Deadlines that open themselves', 'Bank statements every month, Modelo 303 and 111 every quarter, 390 in January: requests appear ahead of time, with reminders.'],
-    ['Norma 43 · camt.053 · CSV · PDF', 'Bank statements read for you', 'Bank files are parsed exactly; PDFs and scans are read by AI. Counterparty, NIF, amount and invoice numbers come out of every payment.'],
+    ['Monthly · quarterly · yearly', 'Deadlines that open themselves', 'Templates for each country, from Modelo 303 to F24, CA3, UStVA and the Portuguese VAT return: requests appear ahead of time, with reminders.'],
+    ['FatturaPA · XRechnung · Factur-X · bank files', 'Statements and e-invoices read for you', 'E-invoices and bank files are read exactly, or fetched from the bank through open banking; PDFs and scans are read by AI. Counterparty, tax ID, amount and invoice numbers come out of every payment.'],
     ['Suggested, then confirmed', 'Payments matched to invoices', 'Each payment is matched to the invoices the client uploaded, by number, amount, NIF and date. Your team confirms or rejects every match.'],
     ['SHA-256 · CSV · printable report', 'An evidence log you can hand over', 'Every action sits in an append-only, hash-chained log. Export it as CSV, or print a tracking report for one document.'],
     ['Full history', 'Versions, never overwrites', 'Replacing a file keeps the earlier version and the reason, and asks the other side to open and confirm again.'],
@@ -115,17 +133,19 @@ const en = {
     ['doc', 'Full audit trail', 'Every step timestamped, hash-chained, exportable.'],
     ['deadline', 'Built around deadlines', 'Modelo 303, 111, 390 — nothing lands late unseen.'],
   ],
+  form: { name: 'Your name', firm: 'Firm', email: 'Work email', country: 'Country', clients: 'Clients', message: 'Anything we should know? (optional)',
+    countries: ['Spain', 'Italy', 'France', 'Germany', 'Portugal', 'Another country'], note: 'We use these details only to arrange the demo. See the <a href="/privacy/">Privacy Policy</a>.' },
   closeTitle: 'Stop asking “did you get it?”',
   closeLead: 'A 30-minute walkthrough with your own documents. We set up a workspace for your firm and plan the first month’s deadlines with you.',
   closeFine: `Already working with a firm on Pescada? <a href="${company.appUrl}">Sign in at app.pescada.io</a>`,
 };
 
-const es = {
+export const es = {
   eyebrow: 'Intercambio de documentos con trazabilidad para asesorías',
   h1: 'Ningún documento se <span class="catch">escapa.</span> Cada paso, registrado.',
   lead: 'Pescada es donde tus clientes envían facturas, extractos bancarios y contratos, y donde tú les envías informes y declaraciones.',
   demo: 'Solicitar una demo', how: 'Cómo funciona',
-  fine: 'Alojado en la UE · Contrato de encargo del tratamiento (RGPD) · Pensado para el 303, 111 y 390',
+  fine: 'España · Italia · Francia · Alemania · Portugal · Alojado en la UE · Contrato de encargo del tratamiento (RGPD)',
   visualAria: 'Tres documentos con trazabilidad: uno confirmado, uno abierto y uno enviado',
   rows: [
     ['Facturas — octubre.pdf', '31.10 · 09:14', 'confirmed', 'Confirmado'],
@@ -145,11 +165,11 @@ const es = {
     ['Abierto', 'La primera apertura queda registrada: se acabaron las suposiciones.'],
     ['Confirmado', 'Se confirma la recepción. El registro queda cerrado.'],
   ],
-  productEyebrow: 'Producto', productTitle: 'Hecho para cómo trabaja de verdad una asesoría en España.',
+  productEyebrow: 'Producto', productTitle: 'Hecho para cómo trabajan de verdad las asesorías, en cinco países.',
   features: [
     ['Una asesoría, todos sus clientes', 'Un espacio para cada cliente', 'Cada empresa tiene su propio espacio y puede invitar a su personal. Los clientes nunca se ven entre sí; tu equipo los ve a todos.'],
-    ['Mensual · trimestral · anual', 'Plazos que se abren solos', 'Extractos cada mes, 303 y 111 cada trimestre, 390 en enero: las solicitudes aparecen con antelación, con recordatorios.'],
-    ['Norma 43 · camt.053 · CSV · PDF', 'Extractos bancarios leídos por ti', 'Los ficheros bancarios se procesan de forma exacta; los PDF y escaneos los lee la IA. De cada movimiento salen contraparte, NIF, importe y número de factura.'],
+    ['Mensual · trimestral · anual', 'Plazos que se abren solos', 'Plantillas para cada país, del Modelo 303 al F24, la CA3, la UStVA o el IVA portugués: las solicitudes aparecen con antelación, con recordatorios.'],
+    ['FatturaPA · XRechnung · Factur-X · ficheros bancarios', 'Extractos y facturas electrónicas leídos por ti', 'Las facturas electrónicas y los ficheros bancarios se leen de forma exacta, o se reciben del banco por banca abierta; los PDF y escaneos los lee la IA. De cada movimiento salen contraparte, NIF, importe y número de factura.'],
     ['Propuesto y luego confirmado', 'Cobros y pagos casados con facturas', 'Cada movimiento se casa con las facturas que subió el cliente por número, importe, NIF y fecha. Tu equipo confirma o rechaza cada propuesta.'],
     ['SHA-256 · CSV · informe imprimible', 'Un registro que sirve como prueba', 'Cada acción queda en un registro encadenado al que solo se pueden añadir entradas. Se exporta en CSV o como informe de un documento.'],
     ['Historial completo', 'Versiones, nunca sobrescrituras', 'Al sustituir un archivo se conserva la versión anterior y el motivo, y se pide a la otra parte que vuelva a abrirlo y confirmarlo.'],
@@ -171,6 +191,8 @@ const es = {
     ['doc', 'Trazabilidad completa', 'Cada paso con su hora, encadenado y exportable.'],
     ['deadline', 'Pensado para los plazos', '303, 111, 390: nada llega tarde sin que se vea.'],
   ],
+  form: { name: 'Tu nombre', firm: 'Asesoría', email: 'Correo de trabajo', country: 'País', clients: 'Clientes', message: '¿Algo que debamos saber? (opcional)',
+    countries: ['España', 'Italia', 'Francia', 'Alemania', 'Portugal', 'Otro país'], note: 'Usamos estos datos solo para organizar la demo. Consulta la <a href="/es/privacidad/">Política de privacidad</a>.' },
   closeTitle: 'Deja de preguntar «¿te ha llegado?»',
   closeLead: 'Una demo de 30 minutos con tus propios documentos. Configuramos un espacio para tu asesoría y preparamos contigo los plazos del primer mes.',
   closeFine: `¿Ya trabajas con una asesoría en Pescada? <a href="${company.appUrl}">Accede en app.pescada.io</a>`,

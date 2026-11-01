@@ -33,3 +33,24 @@ test('the deep health check needs the token and reports mail, jobs and scanner',
   assert.ok('mail' in body && 'jobs' in body);
   server.close();
 });
+
+test('the website demo form is stored, emailed, and sends the visitor to the thank-you page', async () => {
+  await migrate();
+  const server = createApp().listen(0);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const send = (fields) => fetch(`${base}/public/demo`, { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields) });
+  sentMail.length = 0;
+  const r = await send({ name: 'Giulia Rossi', firm: 'Studio Rossi', email: 'giulia@studiorossi.it', country: 'Italy', clients: '50-150', message: 'Ciao', lang: 'it' });
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('location'), 'https://pescada.io/it/grazie/');
+  assert.equal(sentMail.length, 1);
+  assert.match(sentMail[0].subject, /Demo request: Studio Rossi \(Italy\)/);
+  const { rows } = await pool.query(`select firm, lang from demo_requests where email = 'giulia@studiorossi.it'`);
+  assert.deepEqual(rows[0], { firm: 'Studio Rossi', lang: 'it' });
+  // a robot filling the hidden field gets the same page and nothing is stored
+  await send({ name: 'x', firm: 'y', email: 'bot@x.io', website: 'http://spam', lang: 'en' });
+  assert.equal((await pool.query(`select count(*)::int as n from demo_requests where email = 'bot@x.io'`)).rows[0].n, 0);
+  // missing fields send the visitor back to the form
+  assert.match((await send({ name: '', firm: 'y', email: 'a@b.c', lang: 'es' })).headers.get('location'), /\/es\/#demo$/);
+  server.close();
+});

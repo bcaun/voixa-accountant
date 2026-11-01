@@ -12,10 +12,15 @@
 <meta property="og:title" content="Sub-processors">
 <meta property="og:description" content="The providers that process personal data for Pescada, where, and under which safeguards.">
 <meta property="og:url" content="https://pescada.io/subprocessors/">
+<meta property="og:image" content="https://pescada.io/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta property="og:locale" content="en_GB">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Pescada">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/styles.css?v=93a9a7d121">
+<link rel="stylesheet" href="/styles.css?v=1ecb940a58">
 </head>
 <body>
 <header class="top"><div class="wrap">
@@ -25,9 +30,9 @@
       <a class="hide-s" href="/security/">Security</a>
       <a class="hide-s" href="/news/">News</a>
       <a class="hide-s" href="/legal-notice/">Legal</a>
-      <a class="lang" href="/es/subencargados/" hreflang="es" lang="es" title="Español">ES</a>
+      <details class="langs"><summary aria-label="Language">EN</summary><div><a href="/subprocessors/" hreflang="en" lang="en" aria-current="true">English</a><a href="/es/subencargados/" hreflang="es" lang="es">Español</a><a href="/it/" hreflang="it" lang="it">Italiano</a><a href="/fr/" hreflang="fr" lang="fr">Français</a><a href="/de/" hreflang="de" lang="de">Deutsch</a><a href="/pt/" hreflang="pt" lang="pt">Português</a></div></details>
     </nav>
-    <div class="actions"><a class="btn quiet small" href="https://app.pescada.io">Client sign in</a><a class="btn primary small" href="mailto:hello@pescada.io?subject=Pescada%20demo">Request a demo</a></div>
+    <div class="actions"><a class="btn quiet small" href="https://app.pescada.io">Client sign in</a><a class="btn primary small" href="/#demo">Request a demo</a></div>
 </div></header>
 <main class="legal"><div class="wrap">
       <aside aria-label="Legal"><a href="/legal-notice/">Legal notice</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="/dpa/">Data Processing Agreement</a><a href="/subprocessors/" aria-current="page">Sub-processors</a><a href="/security/">Security</a></aside>
@@ -36,8 +41,11 @@
         <p class="meta">Last updated: 2026-11-01 · v1.0</p>
         
         
-<p>Pescada uses four providers to run the service. This list is Annex 1 of our <a href="/dpa/">Data Processing Agreement</a>.</p>
+<p>Pescada uses these providers to run the service. This list is Annex 1 of our <a href="/dpa/">Data Processing Agreement</a>.</p>
 <div class="table"><table><thead><tr><th>Provider</th><th>What for</th><th>Data</th><th>Where</th><th>Safeguard</th></tr></thead><tbody><tr><td>Hostinger International Ltd</td><td>Server that runs the portal and its database</td><td>All portal data</td><td>Germany</td><td>Within the EU</td></tr><tr><td>Cloudflare, Inc.</td><td>DNS; storage of documents and database backups</td><td>Documents, database backups</td><td>Storage in the EU jurisdiction</td><td>Data stored in the EU; Data Privacy Framework and Standard Contractual Clauses for any access from the US</td></tr><tr><td>ActiveCampaign, LLC (Postmark)</td><td>Notification and sign-in emails</td><td>Name, email address, email subject and text</td><td>United States</td><td>Data Privacy Framework and/or Standard Contractual Clauses</td></tr><tr><td>Anthropic, PBC</td><td>Reading PDF and image documents (Claude API)</td><td>Content of the invoices and statements sent for reading</td><td>United States</td><td>Standard Contractual Clauses; not used to train models</td></tr></tbody></table></div>
+<h2>Announced: from 1 December 2026</h2>
+<p>Two providers are added for features that customers can choose to use. They process data only when the feature is used.</p>
+<div class="table"><table><thead><tr><th>Provider</th><th>What for</th><th>Data</th><th>Where</th><th>Safeguard</th></tr></thead><tbody><tr><td>GoCardless Ltd (Bank Account Data)</td><td>Fetching bank statements through open banking, when a client connects a bank account</td><td>Account details and movements of the connected account</td><td>European Union and United Kingdom</td><td>Licensed account information service provider; UK adequacy decision</td></tr><tr><td>Stripe Payments Europe, Ltd.</td><td>Payment of the Pescada subscription by firms that subscribe online</td><td>Firm’s billing contact, billing address and tax ID; card data goes to Stripe directly, never to Pescada</td><td>Ireland (EU), with transfers to the United States</td><td>Data Privacy Framework and Standard Contractual Clauses</td></tr></tbody></table></div>
 <p>Bank files in Norma 43, camt.053 and CSV format are read on our own server and are never sent to Anthropic. A customer can ask us to switch AI reading off for its account.</p>
 <h2>Changes to this list</h2>
 <p>We announce new or replaced sub-processors at least 30 days in advance by email to customers. To be told about changes, write to <a href="mailto:privacy@pescada.io">privacy@pescada.io</a>.</p>
@@ -45,7 +53,8 @@
 <footer><div class="wrap">
   <a class="brand" href="/" aria-label="Pescada"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="rotate(-12 32 32)"><path d="M46 32C36 22 26 16 16 13c4 8 9 15 16 19-7 4-12 11-16 19 10-3 20-9 30-19Z" fill="currentColor" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></g><circle cx="51" cy="15" r="4.4" fill="#F5B730"/></svg><span aria-hidden="true">pescada</span></a>
   <div class="who">Tracked document exchange for accounting firms.<br>Operated by Voixa Consultors S.L. (single-member company) · B24744351 · Carrer de Pallars 193, 08005 Barcelona · <a href="mailto:hello@pescada.io">hello@pescada.io</a><small>Registered in the Barcelona Commercial Registry, Section 8, Sheet B-645004, 1st entry of 13 November 2025</small></div>
-  <nav aria-label="Legal"><a href="/news/">News</a><a href="/legal-notice/">Legal notice</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="/dpa/">Data Processing Agreement</a><a href="/subprocessors/">Sub-processors</a><a href="/security/">Security</a><a href="/es/subencargados/" hreflang="es" lang="es">Español</a></nav>
+  <nav aria-label="Legal"><a href="/news/">News</a><a href="/legal-notice/">Legal notice</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="/dpa/">Data Processing Agreement</a><a href="/subprocessors/">Sub-processors</a><a href="/security/">Security</a></nav>
+  <nav class="foot-langs" aria-label="Language"><a href="/subprocessors/" hreflang="en" lang="en" aria-current="true">English</a><a href="/es/subencargados/" hreflang="es" lang="es">Español</a><a href="/it/" hreflang="it" lang="it">Italiano</a><a href="/fr/" hreflang="fr" lang="fr">Français</a><a href="/de/" hreflang="de" lang="de">Deutsch</a><a href="/pt/" hreflang="pt" lang="pt">Português</a></nav>
 </div></footer>
 </body>
 </html>
