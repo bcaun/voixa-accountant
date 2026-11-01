@@ -125,3 +125,6 @@ details in `site/src/company.mjs`, then rebuild and commit the output:
 ```sh
 node site/build.mjs     # writes site/public, which Caddy serves on pescada.io
 ```
+
+The build also copies the brand fonts (`site/src/fonts`, `site/src/fonts.css`) into `public/` so the app
+and the site use the same files. Colours, type and components follow the Pescada brand kit v1.0.

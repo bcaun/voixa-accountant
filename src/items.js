@@ -12,7 +12,7 @@ export const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
 export const recipientSide = (kind) => (kind === 'doc' ? 'accountant' : 'client');
 export const senderSide = (kind) => (kind === 'doc' ? 'client' : 'accountant');
 export const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`);
-export const refOf = (company, item) => `VX-${String(company.no).padStart(3, '0')}-${String(item.seq).padStart(4, '0')}`;
+export const refOf = (company, item) => `PX-${String(company.no).padStart(3, '0')}-${String(item.seq).padStart(4, '0')}`;
 const doneWord = (kind) => (kind === 'doc' ? 'confirmed receipt of' : kind === 'report' ? 'approved' : 'fulfilled');
 
 /** Derive an item's status from its events (oldest first). */

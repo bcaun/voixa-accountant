@@ -19,3 +19,5 @@ export const company = {
   legalVersion: '1.0',
   legalDate: '2026-11-01',
 };
+
+export const demoHref = (lang) => `mailto:${company.contactEmail}?subject=${encodeURIComponent(lang === 'es' ? 'Demo de Pescada' : 'Pescada demo')}`;

@@ -17,99 +17,65 @@
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="/es/" aria-label="Pescada"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20c7-10 19-13 31-9 5 2 9 5 11 9-2 4-6 7-11 9-12 4-24 1-31-9z" stroke="currentColor" stroke-width="4"/><path d="M48 20l6-7m-6 7l6 7" stroke="currentColor" stroke-width="4"/><path d="M17 20l5 5 10-11" stroke="#E0A82E" stroke-width="4"/></svg><span>pescada</span></a>
+  <a class="brand" href="/es/" aria-label="Pescada"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="rotate(-12 32 32)"><path d="M46 32C36 22 26 16 16 13c4 8 9 15 16 19-7 4-12 11-16 19 10-3 20-9 30-19Z" fill="currentColor" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></g><circle cx="51" cy="15" r="4.4" fill="#F5B730"/></svg><span aria-hidden="true">pescada</span></a>
   <nav class="nav" aria-label="Main">
       <a class="hide-s" href="/es/#product">Producto</a>
       <a class="hide-s" href="/es/seguridad/">Seguridad</a>
       <a class="hide-s" href="/es/aviso-legal/">Legal</a>
       <a class="lang" href="/" hreflang="en" lang="en" title="English">EN</a>
-      <a class="btn small" href="https://app.pescada.io">Acceso clientes</a>
     </nav>
+    <div class="actions"><a class="btn quiet small" href="https://app.pescada.io">Acceso clientes</a><a class="btn primary small" href="mailto:hello@pescada.io?subject=Demo%20de%20Pescada">Solicitar una demo</a></div>
 </div></header>
 <main>
 <section class="hero"><div class="wrap">
-  <div>
-    <p class="eyebrow">Para asesorías y despachos en España</p>
-    <h1 style="margin-top:18px">Ningún documento se <em>escapa</em>. Cada paso, registrado.</h1>
-    <p class="lead">Pescada es donde tus clientes envían facturas, extractos bancarios y contratos, y donde tú les envías informes y declaraciones. Cada archivo queda registrado desde el envío hasta la confirmación, así que nadie puede decir que no lo recibió.</p>
-    <div class="cta"><a class="btn primary" href="mailto:hello@pescada.io?subject=Demo%20de%20Pescada">Solicitar una demo</a><a class="btn" href="#how">Cómo funciona</a></div>
-    <p class="fine">Alojado en la UE · Contrato de encargo del tratamiento (RGPD) · Pensado para los plazos del 303, 111 y 390</p>
+  <div class="hero-text">
+    <p class="eyebrow">Intercambio de documentos con trazabilidad para asesorías</p>
+    <h1>Ningún documento se <span class="catch">escapa.</span> Cada paso, registrado.</h1>
+    <p class="lead">Pescada es donde tus clientes envían facturas, extractos bancarios y contratos, y donde tú les envías informes y declaraciones.</p>
+    <div class="cta"><a class="btn primary" href="mailto:hello@pescada.io?subject=Demo%20de%20Pescada">Solicitar una demo</a><a class="btn outline" href="#how">Cómo funciona</a></div>
+    <p class="fine">Alojado en la UE · Contrato de encargo del tratamiento (RGPD) · Pensado para el 303, 111 y 390</p>
   </div>
-  <div class="ledger" role="img" aria-label="Ejemplo de documento con trazabilidad: enviado, notificado, abierto y confirmado, cada paso con su hora">
-    <div class="doc"><b>Factura de proveedor F-2026-08812</b><span class="ref">PX-001-0004 · v1</span></div>
-    <ol class="steps">
-      <li><i></i>Enviado<em>12 Oct<br>09:14</em></li>
-      <li><i></i>Notificado<em>12 Oct<br>09:14</em></li>
-      <li><i></i>Abierto<em>12 Oct<br>10:02</em></li>
-      <li><i></i>Confirmado<em>12 Oct<br>10:03</em></li>
-    </ol>
-    <ul class="log">
-      <li><span class="t">09:14</span><span><span class="who">Daniel</span> subió Makro_F-2026-08812.pdf</span><span class="h">#3fa9c2</span></li><li><span class="t">09:14</span><span><span class="who">Servidor de correo</span> aceptó el aviso a Elena</span><span class="h">#8b01d4</span></li><li><span class="t">10:02</span><span><span class="who">Elena</span> abrió el documento</span><span class="h">#c41e77</span></li><li><span class="t">10:03</span><span><span class="who">Elena</span> confirmó la recepción</span><span class="h">#1d9a50</span></li>
-    </ul>
-    <p class="verified">✓ Registro verificado: 1.284 entradas, cadena intacta</p>
+  <div class="horizon" role="img" aria-label="Tres documentos con trazabilidad: uno confirmado, uno abierto y uno enviado">
+    <div class="sun"></div><div class="sea"></div><div class="lagoon"></div><div class="deep"></div>
+    <div class="card"><div class="doc-row"><div><b>Facturas — octubre.pdf</b><span class="mono">31.10 · 09:14</span></div><span class="status confirmed">Confirmado</span></div><div class="doc-row"><div><b>Modelo 303 — 3T.pdf</b><span class="mono">30.10 · 17:52</span></div><span class="status opened">Abierto</span></div><div class="doc-row"><div><b>Extracto bancario — T3.pdf</b><span class="mono">30.10 · 11:03</span></div><span class="status sent">Enviado</span></div></div>
   </div>
 </div></section>
 
-<section class="band"><div class="wrap">
+<section class="section sand"><div class="wrap">
   <div class="section-head"><p class="eyebrow">El problema</p><h2>Tres frases que toda asesoría ha oído.</h2></div>
-  <div class="excuses">
-    <div class="excuse"><q>No me ha llegado.</q><p>Pescada muestra cuándo llegó el archivo, cuándo el aviso llegó a su bandeja de entrada y cuándo lo abrió. Solo se puede confirmar la recepción después de abrirlo.</p></div>
-    <div class="excuse"><q>No me lo enviaste.</q><p>Cada archivo se registra con su huella digital y su hora en un registro que no se puede modificar después. Tu cliente ve el mismo registro que tú.</p></div>
-    <div class="excuse"><q>Se fue a spam.</q><p>El servidor de correo del destinatario informa: entregado, rebotado o marcado como spam. Lo que queda sin abrir recibe un recordatorio automático.</p></div>
-  </div>
+  <div class="quotes"><blockquote class="quote"><q>No me ha llegado.</q><p>Pescada muestra cuándo llegó el archivo, cuándo el aviso llegó a su bandeja de entrada y cuándo lo abrió.</p><span class="mono">→ Entrega registrada, con su hora</span></blockquote><blockquote class="quote"><q>No me lo enviaste.</q><p>Cada archivo se registra con su huella y su hora en un registro que nadie puede modificar. Tu cliente ve lo mismo que tú.</p><span class="mono">→ Cada envío, registrado</span></blockquote><blockquote class="quote"><q>Se fue a spam.</q><p>El servidor de correo del destinatario informa: entregado, rebotado o spam. Lo que queda sin abrir recibe un recordatorio.</p><span class="mono">→ Un canal fuera del correo</span></blockquote></div>
 </div></section>
 
-<section class="band" id="how"><div class="wrap">
+<section class="section" id="how"><div class="wrap">
   <div class="section-head"><p class="eyebrow">Cómo funciona</p><h2>Del envío a la confirmación, en cuatro pasos registrados.</h2></div>
-  <ol class="flow">
-    <li><h3>Enviado</h3><p>El cliente sube sus archivos a su espacio privado, o tú envías un informe con su fecha límite.</p></li>
-    <li><h3>Notificado</h3><p>La otra parte recibe un correo. Entregas, rebotes y avisos de spam quedan en el registro.</p></li>
-    <li><h3>Abierto</h3><p>Cada apertura y descarga queda registrada, versión a versión, con la persona y la hora.</p></li>
-    <li><h3>Confirmado</h3><p>La recepción o la aprobación se confirma con un clic, y solo después de haber abierto el archivo.</p></li>
-  </ol>
+  <ol class="steps"><li><span class="tile sent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></span><span class="mono">01</span><h3>Enviado</h3><p>El archivo llega y queda registrado con el remitente y la hora.</p></li><li><span class="tile notified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></span><span class="mono">02</span><h3>Notificado</h3><p>La otra parte recibe el aviso de que hay un documento esperando.</p></li><li><span class="tile opened"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="mono">03</span><h3>Abierto</h3><p>La primera apertura queda registrada: se acabaron las suposiciones.</p></li><li><span class="tile confirmed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9.5"/></svg></span><span class="mono">04</span><h3>Confirmado</h3><p>Se confirma la recepción. El registro queda cerrado.</p></li></ol>
 </div></section>
 
-<section class="band" id="product"><div class="wrap">
+<section class="section" id="product" style="padding-top:0"><div class="wrap">
   <div class="section-head"><p class="eyebrow">Producto</p><h2>Hecho para cómo trabaja de verdad una asesoría en España.</h2></div>
-  <div class="features">
-    <div class="feature"><span class="tag">Una asesoría, todos sus clientes</span><h3>Un espacio para cada cliente</h3><p>Cada empresa tiene su propio espacio y puede invitar a su personal. Los clientes nunca se ven entre sí; tu equipo los ve a todos.</p></div>
-    <div class="feature"><span class="tag">Mensual · trimestral · anual</span><h3>Plazos que se abren solos</h3><p>Extractos cada mes, 303 y 111 cada trimestre, 390 en enero: las solicitudes y los informes previstos aparecen con antelación, con recordatorios.</p></div>
-    <div class="feature"><span class="tag">Norma 43 · camt.053 · CSV · PDF</span><h3>Extractos bancarios leídos por ti</h3><p>Los ficheros bancarios se procesan de forma exacta; los PDF y escaneos los lee la IA. De cada movimiento salen contraparte, NIF, importe y números de factura y contrato.</p></div>
-    <div class="feature"><span class="tag">Propuesto y luego confirmado</span><h3>Cobros y pagos casados con facturas</h3><p>Cada movimiento se casa con las facturas que subió el cliente por número, importe, NIF y fecha. Tu equipo confirma o rechaza cada propuesta.</p></div>
-    <div class="feature"><span class="tag">SHA-256 · CSV · informe imprimible</span><h3>Un registro que sirve como prueba</h3><p>Cada acción queda en un registro encadenado al que solo se pueden añadir entradas. Se exporta en CSV o como informe imprimible de un documento.</p></div>
-    <div class="feature"><span class="tag">Historial completo</span><h3>Versiones, nunca sobrescrituras</h3><p>Al sustituir un archivo se conserva la versión anterior y el motivo, y se pide a la otra parte que vuelva a abrirlo y confirmarlo.</p></div>
-  </div>
+  <div class="features"><div class="feature"><span class="mono">Una asesoría, todos sus clientes</span><h3>Un espacio para cada cliente</h3><p>Cada empresa tiene su propio espacio y puede invitar a su personal. Los clientes nunca se ven entre sí; tu equipo los ve a todos.</p></div><div class="feature"><span class="mono">Mensual · trimestral · anual</span><h3>Plazos que se abren solos</h3><p>Extractos cada mes, 303 y 111 cada trimestre, 390 en enero: las solicitudes aparecen con antelación, con recordatorios.</p></div><div class="feature"><span class="mono">Norma 43 · camt.053 · CSV · PDF</span><h3>Extractos bancarios leídos por ti</h3><p>Los ficheros bancarios se procesan de forma exacta; los PDF y escaneos los lee la IA. De cada movimiento salen contraparte, NIF, importe y número de factura.</p></div><div class="feature"><span class="mono">Propuesto y luego confirmado</span><h3>Cobros y pagos casados con facturas</h3><p>Cada movimiento se casa con las facturas que subió el cliente por número, importe, NIF y fecha. Tu equipo confirma o rechaza cada propuesta.</p></div><div class="feature"><span class="mono">SHA-256 · CSV · informe imprimible</span><h3>Un registro que sirve como prueba</h3><p>Cada acción queda en un registro encadenado al que solo se pueden añadir entradas. Se exporta en CSV o como informe de un documento.</p></div><div class="feature"><span class="mono">Historial completo</span><h3>Versiones, nunca sobrescrituras</h3><p>Al sustituir un archivo se conserva la versión anterior y el motivo, y se pide a la otra parte que vuelva a abrirlo y confirmarlo.</p></div></div>
 </div></section>
 
-<section class="band"><div class="wrap split">
+<section class="section" style="padding-top:0"><div class="wrap split">
   <div class="section-head" style="margin:0"><p class="eyebrow">Para tus clientes</p><h2>Sencillo incluso para quien odia los portales.</h2><p class="lead">Sin cuenta que configurar ni contraseña que olvidar. Reciben un enlace, suben sus archivos y ven qué les queda pendiente.</p></div>
-  <ul class="facts">
-    <li><b>Acceso</b><span>Un enlace de un solo uso por correo. Nada que recordar.</span></li>
-    <li><b>Un único sitio</b><span>Subir documentos, responder solicitudes, aprobar informes.</span></li>
-    <li><b>Privado</b><span>Solo los documentos de su empresa y los compañeros que inviten.</span></li>
-    <li><b>Cualquier dispositivo</b><span>Funciona en el navegador del móvil o del portátil.</span></li>
-  </ul>
+  <ul class="facts"><li><b>Acceso</b><span>Un enlace de un solo uso por correo. Nada que recordar.</span></li><li><b>Un único sitio</b><span>Subir documentos, responder solicitudes, aprobar informes.</span></li><li><b>Privado</b><span>Solo los documentos de su empresa y los compañeros que inviten.</span></li><li><b>Cualquier dispositivo</b><span>Funciona en el navegador del móvil o del portátil.</span></li></ul>
 </div></section>
 
-<section class="band"><div class="wrap split">
-  <div class="section-head" style="margin:0"><p class="eyebrow">Datos y seguridad</p><h2>Los datos de tus clientes se quedan en la UE.</h2><p><a href="/es/seguridad/">Seguridad</a> · <a href="/es/dpa/">Encargo del tratamiento</a> · <a href="/es/subencargados/">Subencargados</a></p></div>
-  <ul class="facts">
-    <li><b>Alojamiento</b><span>Servidores en Alemania; archivos en un almacenamiento con jurisdicción UE.</span></li>
-    <li><b>Conservación</b><span>Los archivos están bloqueados contra borrado durante 6 años, como exige el Código de Comercio.</span></li>
-    <li><b>Copias</b><span>Diarias, con una copia en un segundo proveedor.</span></li>
-    <li><b>Lectura con IA</b><span>Solo para PDF y escaneos. Los ficheros bancarios estructurados no salen de nuestros servidores, y la lectura con IA se puede desactivar.</span></li>
-  </ul>
+<section class="section deep" id="security"><div class="wrap split">
+  <div class="section-head" style="margin:0"><p class="eyebrow">Datos y seguridad</p><h2>Los papeles de tus clientes no salen de aguas europeas.</h2><p class="lead">Servidores en Alemania, archivos en un almacenamiento con jurisdicción UE bloqueado contra borrado durante seis años, cifrado en tránsito y copia diaria en un segundo proveedor.</p><p><a href="/es/seguridad/">Seguridad</a> · <a href="/es/dpa/">Encargo del tratamiento</a> · <a href="/es/subencargados/">Subencargados</a></p></div>
+  <div class="cards-deep"><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><b>Datos en la UE</b><span>Guardados y tratados en la UE.</span></div><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><b>RGPD desde el diseño</b><span>Contrato del artículo 28 con cada asesoría.</span></div><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg><b>Trazabilidad completa</b><span>Cada paso con su hora, encadenado y exportable.</span></div><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><b>Pensado para los plazos</b><span>303, 111, 390: nada llega tarde sin que se vea.</span></div></div>
 </div></section>
 
-<section class="band"><div class="wrap closing">
-  <h2>Pruébalo con los documentos de tus propios clientes.</h2>
-  <p class="lead">Configuramos un espacio para tu asesoría y preparamos contigo los plazos del primer mes.</p>
-  <div class="cta" style="margin-top:4px"><a class="btn primary" href="mailto:hello@pescada.io?subject=Demo%20de%20Pescada">Solicitar una demo</a></div>
+<section class="demo"><div class="wrap">
+  <h2>Deja de preguntar «¿te ha llegado?»</h2>
+  <p class="lead">Una demo de 30 minutos con tus propios documentos. Configuramos un espacio para tu asesoría y preparamos contigo los plazos del primer mes.</p>
+  <a class="btn dark" href="mailto:hello@pescada.io?subject=Demo%20de%20Pescada">Solicitar una demo</a>
   <p class="fine">¿Ya trabajas con una asesoría en Pescada? <a href="https://app.pescada.io">Accede en app.pescada.io</a></p>
 </div></section></main>
 <footer><div class="wrap">
-  <div><b style="color:var(--ink)">Pescada</b> · Intercambio de documentos con trazabilidad para asesorías y despachos contables.<br>Voixa Consultors S.L. (sociedad unipersonal) · B24744351 · Carrer de Pallars 193, 08005 Barcelona · <a href="mailto:hello@pescada.io">hello@pescada.io</a><br><small>Inscrita en el Registro Mercantil de Barcelona, Sección 8, Hoja B-645004, Inscripción 1.ª de 13 de noviembre de 2025</small></div>
-  <nav aria-label="Legal"><a href="/es/aviso-legal/">Aviso legal</a><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/">Seguridad</a></nav>
+  <a class="brand" href="/es/" aria-label="Pescada"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="rotate(-12 32 32)"><path d="M46 32C36 22 26 16 16 13c4 8 9 15 16 19-7 4-12 11-16 19 10-3 20-9 30-19Z" fill="currentColor" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></g><circle cx="51" cy="15" r="4.4" fill="#F5B730"/></svg><span aria-hidden="true">pescada</span></a>
+  <div class="who">Intercambio de documentos con trazabilidad para asesorías y despachos contables.<br>Un servicio de Voixa Consultors S.L. (sociedad unipersonal) · B24744351 · Carrer de Pallars 193, 08005 Barcelona · <a href="mailto:hello@pescada.io">hello@pescada.io</a><small>Inscrita en el Registro Mercantil de Barcelona, Sección 8, Hoja B-645004, Inscripción 1.ª de 13 de noviembre de 2025</small></div>
+  <nav aria-label="Legal"><a href="/es/aviso-legal/">Aviso legal</a><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/">Seguridad</a><a href="/" hreflang="en" lang="en">English</a></nav>
 </div></footer>
 </body>
 </html>

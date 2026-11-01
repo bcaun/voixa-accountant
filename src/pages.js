@@ -3,9 +3,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 export function authPage({ token, expired }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in · Pescada</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/app.css"></head>
+<title>Sign in · Pescada</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/app.css"></head>
 <body class="auth"><main class="auth-card card pad">
-<div class="logo auth-logo"><svg viewBox="0 0 64 40" width="40" height="25" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 20c7-10 19-13 31-9 5 2 9 5 11 9-2 4-6 7-11 9-12 4-24 1-31-9z" stroke="currentColor" stroke-width="4"/><path d="M48 20l6-7m-6 7l6 7" stroke="currentColor" stroke-width="4"/><path d="M17 20l5 5 10-11" stroke="#E0A82E" stroke-width="4"/></svg><span class="word">pescada</span></div>
+<div class="logo auth-logo"><svg viewBox="0 0 64 64" width="38" height="38" aria-hidden="true" focusable="false"><g transform="rotate(-12 32 32)"><path d="M46 32C36 22 26 16 16 13c4 8 9 15 16 19-7 4-12 11-16 19 10-3 20-9 30-19Z" fill="currentColor" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></g><circle cx="51" cy="15" r="4.4" fill="#F5B730"/></svg><span class="word">pescada</span></div>
 ${expired
     ? `<h1>This link no longer works</h1><p class="sub">Sign-in links work once and expire after a short time. Request a new one.</p><a class="btn primary" href="/">Request a new link</a>`
     : `<h1>Sign in to Pescada</h1><p class="sub">Continue to your workspace.</p>

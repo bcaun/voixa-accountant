@@ -14,17 +14,15 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 export function renderEmail({ heading, lines = [], button, footer }) {
   const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || `${config.firmName} · Pescada`].join('\n');
-  const html = `<!doctype html><html><body style="margin:0;background:#F1F5F9;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#3F4A56">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #E1E7EC;border-radius:14px">
-<tr><td style="padding:22px 28px 0"><span style="font:600 13px/1 Helvetica,Arial,sans-serif;letter-spacing:.12em;color:#0F2438">PESCADA</span>
-<span style="font:500 11px/1 Helvetica,Arial,sans-serif;letter-spacing:.08em;color:#66727F;padding-left:8px">EXCHANGE</span>
-<div style="height:3px;width:56px;background:#E0C19C;border-radius:2px;margin-top:10px"></div></td></tr>
-<tr><td style="padding:18px 28px 8px"><h1 style="margin:0 0 12px;font:500 22px/1.25 Georgia,serif;color:#0F2438">${esc(heading)}</h1>
-${lines.map((l) => `<p style="margin:0 0 10px;font-size:14px;line-height:1.55">${esc(l)}</p>`).join('')}
-${button ? `<p style="margin:18px 0 6px"><a href="${esc(button.url)}" style="display:inline-block;background:#0F2438;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:999px">${esc(button.label)}</a></p>` : ''}
+  const html = `<!doctype html><html><body style="margin:0;background:#F4F9FA;font-family:'Schibsted Grotesk',Helvetica,Arial,sans-serif;color:#0B2B3F">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F9FA;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #CFE2EC;border-radius:24px">
+<tr><td style="padding:26px 32px 0"><span style="font:700 24px/1 'Familjen Grotesk',Helvetica,Arial,sans-serif;letter-spacing:-.03em;color:#0B2B3F">pescada</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#F5B730;vertical-align:top;margin-left:2px"></span></td></tr>
+<tr><td style="padding:20px 32px 10px"><h1 style="margin:0 0 14px;font:700 24px/1.2 'Familjen Grotesk',Helvetica,Arial,sans-serif;letter-spacing:-.02em;color:#0B2B3F">${esc(heading)}</h1>
+${lines.map((l) => `<p style="margin:0 0 10px;font-size:15px;line-height:1.55;color:#23445A">${esc(l)}</p>`).join('')}
+${button ? `<p style="margin:22px 0 8px"><a href="${esc(button.url)}" style="display:inline-block;background:#1A5DB4;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;padding:13px 26px;border-radius:999px">${esc(button.label)}</a></p>` : ''}
 </td></tr>
-<tr><td style="padding:14px 28px 22px;font-size:12px;color:#66727F;border-top:1px solid #E1E7EC">${esc(footer || `${config.firmName} · Pescada. This message and every action on the document are recorded in the workspace log.`)}</td></tr>
+<tr><td style="padding:16px 32px 24px;font-size:12.5px;line-height:1.5;color:#3F6478;border-top:1px solid #CFE2EC">${esc(footer || `${config.firmName} · Pescada. This message and every action on the document are recorded in the workspace log.`)}</td></tr>
 </table></td></tr></table></body></html>`;
   return { html, text };
 }

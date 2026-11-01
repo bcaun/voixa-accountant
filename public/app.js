@@ -111,13 +111,13 @@ function pill(it) {
     if (s.state === 'done') return ['ok', 'Fulfilled'];
     const left = new Date(it.due_at) - now;
     if (left < 0) return ['bad', `Overdue by ${dur(left)}`];
-    return [s.opened_at ? 'info' : 'warn', `${s.opened_at ? 'Seen' : 'Not seen yet'} · due in ${dur(left)}`];
+    return [s.opened_at ? 'opened' : 'sent', `${s.opened_at ? 'Seen' : 'Not seen yet'} · due in ${dur(left)}`];
   }
   if (s.state === 'done') return ['ok', it.kind === 'report' ? 'Approved' : 'Received & confirmed'];
   if (s.changes_requested_at) return ['warn', 'Changes requested'];
-  if (s.state === 'opened') return ['info', it.kind === 'report' ? 'Opened · not approved' : 'Opened · not confirmed'];
+  if (s.state === 'opened') return ['opened', it.kind === 'report' ? 'Opened · not approved' : 'Opened · not confirmed'];
   const age = now - new Date(s.version_at);
-  return age > 48 * H ? ['bad', `Not opened for ${dur(age)}`] : ['warn', 'Not opened yet'];
+  return age > 48 * H ? ['bad', `Not opened for ${dur(age)}`] : ['sent', 'Not opened yet'];
 }
 
 function deadlineNote(it) {
@@ -602,7 +602,7 @@ function renderDrawer() {
     ${deadlineNote(it) ? `<p style="font-size:13px" class="rs">${deadlineNote(it)}</p>` : ''}
     <div class="dr-actions">${acts}</div>
     <dl class="meta">${meta.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}${linked ? `<dt>${it.fulfilled_by ? 'Fulfilled by' : 'Answers request'}</dt><dd><a href="#/c/${w.company.id}/i/${linked.id}" style="color:var(--blue)">${esc(linked.title)}</a></dd>` : ''}</dl>
-    ${it.versions.length ? `<section style="display:grid;gap:10px"><h3>Files</h3><ul class="versions">${it.versions.slice().reverse().map((v) => `<li class="${v === cur ? 'cur' : ''}"><div><b style="color:var(--ink)">v${v.version} · ${esc(v.file_name)}</b> · ${fmtSize(v.size)} ${v === cur ? '<span class="pill info" style="margin-left:6px">Current</span>' : ''}</div>
+    ${it.versions.length ? `<section style="display:grid;gap:10px"><h3>Files</h3><ul class="versions">${it.versions.slice().reverse().map((v) => `<li class="${v === cur ? 'cur' : ''}"><div><b style="color:var(--ink)">v${v.version} · ${esc(v.file_name)}</b> · ${fmtSize(v.size)} ${v === cur ? '<span class="pill sent" style="margin-left:6px">Current</span>' : ''}</div>
       <div class="sub">Uploaded ${fmt(v.uploaded_at)}${v.uploaded_by ? ` by ${esc(v.uploaded_by)}` : ''}${v.replace_reason ? `. Reason for replacing: ${esc(v.replace_reason)}` : ''}</div>
       <div class="mono">SHA-256 ${v.sha256}</div>${v !== cur ? `<div><a href="/api/items/${it.id}/file?v=${v.version}" target="_blank" rel="noopener" style="color:var(--blue)" data-act="opened-file">Open version ${v.version}</a></div>` : ''}</li>`).join('')}</ul></section>` : ''}
     ${recognisedSection(it)}

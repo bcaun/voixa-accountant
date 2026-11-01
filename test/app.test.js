@@ -104,7 +104,7 @@ test('client sends a document; accountant must open it before confirming', async
   ctx.doc = doc.id;
   assert.equal(doc.status.state, 'sent');
   assert.equal(doc.versions[0].sha256, sha(content), 'server-side fingerprint matches the bytes');
-  assert.equal(doc.ref, 'VX-001-0001');
+  assert.equal(doc.ref, 'PX-001-0001');
 
   await flushEmails();
   assert.ok(sentMail.some((m) => m.to_email === 'elena@voixa.es' && m.kind === 'new_document'), 'accountant notified');

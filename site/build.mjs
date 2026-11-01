@@ -3,7 +3,7 @@
 import { readdir, readFile, mkdir, writeFile, copyFile, cp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { company } from './src/company.mjs';
+import { company, demoHref } from './src/company.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(here, 'public');
@@ -13,12 +13,12 @@ const UI = {
   en: {
     product: 'Product', security: 'Security', legal: 'Legal', signin: 'Client sign in', demo: 'Request a demo',
     other: 'ES', otherLabel: 'Español', legalNav: 'Legal', draft: `Draft version ${company.legalVersion}, pending review by our lawyers. The final text may change.`,
-    updated: 'Last updated', singleMember: 'single-member company', footer: 'Tracked document exchange for accounting firms.',
+    updated: 'Last updated', operated: 'Operated by', singleMember: 'single-member company', footer: 'Tracked document exchange for accounting firms.',
   },
   es: {
     product: 'Producto', security: 'Seguridad', legal: 'Legal', signin: 'Acceso clientes', demo: 'Solicitar una demo',
     other: 'EN', otherLabel: 'English', legalNav: 'Legal', draft: `Versión borrador ${company.legalVersion}, pendiente de revisión por nuestros abogados. El texto final puede cambiar.`,
-    updated: 'Última actualización', singleMember: 'sociedad unipersonal', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.',
+    updated: 'Última actualización', operated: 'Un servicio de', singleMember: 'sociedad unipersonal', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.',
   },
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -33,8 +33,8 @@ function layout(page, all) {
       <a class="hide-s" href="${all.find((p) => p.key === 'security' && p.lang === page.lang).path}">${t.security}</a>
       <a class="hide-s" href="${legalPages[0].path}">${t.legal}</a>
       <a class="lang" href="${alt.path}" hreflang="${alt.lang}" lang="${alt.lang}" title="${t.otherLabel}">${t.other}</a>
-      <a class="btn small" href="${company.appUrl}">${t.signin}</a>
-    </nav>`;
+    </nav>
+    <div class="actions"><a class="btn quiet small" href="${company.appUrl}">${t.signin}</a><a class="btn primary small" href="${demoHref(page.lang)}">${t.demo}</a></div>`;
   const legalBody = ORDER.includes(page.key) ? `<main class="legal"><div class="wrap">
       <aside aria-label="${t.legalNav}">${legalPages.map((p) => `<a href="${p.path}"${p.key === page.key ? ' aria-current="page"' : ''}>${esc(p.navTitle || p.title)}</a>`).join('')}</aside>
       <article>
@@ -62,13 +62,14 @@ function layout(page, all) {
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="${home}" aria-label="${company.product}">${LOGO}<span>pescada</span></a>
+  <a class="brand" href="${home}" aria-label="${company.product}">${LOGO}<span aria-hidden="true">pescada</span></a>
   ${nav}
 </div></header>
 ${legalBody}
 <footer><div class="wrap">
-  <div><b style="color:var(--ink)">${company.product}</b> · ${t.footer}<br>${esc(company.legalName)}${company.singleMember ? ` (${t.singleMember})` : ''} · ${esc(company.taxId)} · ${esc(company.address)} · <a href="mailto:${company.contactEmail}">${company.contactEmail}</a><br><small>${esc(company.registry[page.lang])}</small></div>
-  <nav aria-label="${t.legalNav}">${legalPages.map((p) => `<a href="${p.path}">${esc(p.navTitle || p.title)}</a>`).join('')}</nav>
+  <a class="brand" href="${home}" aria-label="${company.product}">${LOGO}<span aria-hidden="true">pescada</span></a>
+  <div class="who">${t.footer}<br>${t.operated} ${esc(company.legalName)}${company.singleMember ? ` (${t.singleMember})` : ''} · ${esc(company.taxId)} · ${esc(company.address)} · <a href="mailto:${company.contactEmail}">${company.contactEmail}</a><small>${esc(company.registry[page.lang])}</small></div>
+  <nav aria-label="${t.legalNav}">${legalPages.map((p) => `<a href="${p.path}">${esc(p.navTitle || p.title)}</a>`).join('')}<a href="${alt.path}" hreflang="${alt.lang}" lang="${alt.lang}">${t.otherLabel}</a></nav>
 </div></footer>
 </body>
 </html>
@@ -92,7 +93,13 @@ for (const page of all) {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, 'index.html'), layout(page, all));
 }
-await copyFile(path.join(here, 'src/styles.css'), path.join(out, 'styles.css'));
+// fonts.css is inlined into the site stylesheet, and shared with the app (public/) so both use the same files
+const fontsCss = await readFile(path.join(here, 'src/fonts.css'), 'utf8');
+await writeFile(path.join(out, 'styles.css'), fontsCss + '\n' + (await readFile(path.join(here, 'src/styles.css'), 'utf8')).replace('@import url(/fonts.css);\n', ''));
+const app = path.join(here, '../public');
+await writeFile(path.join(app, 'fonts.css'), fontsCss);
+await rm(path.join(app, 'fonts'), { recursive: true, force: true });
+await cp(path.join(here, 'src/fonts'), path.join(app, 'fonts'), { recursive: true });
 await copyFile(path.join(here, 'src/favicon.svg'), path.join(out, 'favicon.svg'));
 await cp(path.join(here, 'src/fonts'), path.join(out, 'fonts'), { recursive: true });
 await writeFile(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
