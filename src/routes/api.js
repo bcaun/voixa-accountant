@@ -5,8 +5,9 @@ import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout } fro
 import { flushEmails } from '../mailer.js';
 import { storage } from '../storage.js';
 import { parseUpload, discard } from '../multipart.js';
-import { verifyCompany, appendEvent } from '../ledger.js';
+import { verifyCompany, appendEvent, lockCompany } from '../ledger.js';
 import { parseDay } from '../dates.js';
+import { COUNTRY_CODES, countryOf, isCountry, publicCountries, tzOf } from '../countries.js';
 import * as items from '../items.js';
 import * as companies from '../companies.js';
 import { exportCsv, exportReport } from '../export.js';
@@ -55,23 +56,39 @@ api.use(requireUser);
 api.get('/me', async (req, res) => {
   const u = req.user;
   const { rows } = u.role === 'accountant'
-    ? await query('select id, no, name, nif, city from companies order by no')
-    : await query(`select c.id, c.no, c.name, c.nif, c.city from companies c join memberships m on m.company_id = c.id
-                   where m.user_id = $1 and m.removed_at is null order by c.no`, [u.id]);
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role }, firm: config.firmName, companies: rows });
+    ? await query('select id, no, name, nif, city, country from companies where firm_id = $1 order by no', [u.firm_id])
+    : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
+                   join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
+                   where m.user_id = $1 and m.removed_at is null order by f.name, c.no`, [u.id]);
+  const firm = u.firm_id ? (await query('select id, name, country from firms where id = $1', [u.firm_id])).rows[0] : null;
+  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role }, firm: firm?.name || rows[0]?.firm_name || '',
+    firmInfo: firm, countries: publicCountries(), companies: rows });
+});
+
+/* ---------- the accountant's firm ---------- */
+
+api.patch('/firm', json, async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can change the firm’s details.');
+  const name = str(req.body?.name, 200), country = req.body?.country;
+  if (!name) throw new HttpError(400, 'Enter the firm’s name.');
+  if (!isCountry(country)) throw new HttpError(400, `Choose one of: ${COUNTRY_CODES.join(', ')}.`);
+  await query('update firms set name = $2, country = $3 where id = $1', [req.user.firm_id, name, country]);
+  res.json({ ok: true });
 });
 
 /* ---------- accountant overview ---------- */
 
 api.get('/overview', async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
-  const { rows: cos } = await query('select id, no, name, nif, city, created_at from companies order by no');
+  const firmId = req.user.firm_id;
+  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at from companies where firm_id = $1 order by no', [firmId]);
   const { rows: open } = await query(
     `select i.id, i.company_id, i.seq, i.kind, i.title, i.category, i.period, i.due_at, i.state, i.version,
-            i.sent_at, i.version_at, i.opened_at, i.done_at, i.reminders, c.no, c.name as company_name
-     from items i join companies c on c.id = i.company_id where i.state <> 'done' order by i.version_at nulls last`);
+            i.sent_at, i.version_at, i.opened_at, i.done_at, i.reminders, c.no, c.name as company_name, c.country
+     from items i join companies c on c.id = i.company_id where c.firm_id = $1 and i.state <> 'done' order by i.version_at nulls last`, [firmId]);
   const { rows: members } = await query(
-    `select m.company_id, count(*)::int as n from memberships m where m.removed_at is null group by m.company_id`);
+    `select m.company_id, count(*)::int as n from memberships m join companies c on c.id = m.company_id
+     where m.removed_at is null and c.firm_id = $1 group by m.company_id`, [firmId]);
   const mcount = Object.fromEntries(members.map((r) => [r.company_id, r.n]));
   res.json({
     companies: cos.map((c) => ({ ...c, members: mcount[c.id] || 0 })),
@@ -84,7 +101,7 @@ api.get('/overview', async (req, res) => {
 api.post('/companies', json, async (req, res) => {
   const b = req.body || {};
   const co = await tx(async (c) => {
-    const created = await companies.createCompany(c, { user: req.user, name: str(b.name, 200), nif: str(b.nif, 40), city: str(b.city, 100) });
+    const created = await companies.createCompany(c, { user: req.user, name: str(b.name, 200), nif: str(b.nif, 40), city: str(b.city, 100), country: b.country || undefined });
     if (b.contactEmail) await companies.addMember(c, { user: req.user, company: created, email: b.contactEmail, name: str(b.contactName, 200) });
     return created;
   });
@@ -96,7 +113,8 @@ api.patch('/companies/:id', json, async (req, res) => {
   const b = req.body || {};
   await tx(async (c) => {
     const company = await companyFor(req.user, req.params.id, c);
-    await companies.updateCompany(c, { user: req.user, company, name: str(b.name, 200), nif: b.nif === undefined ? undefined : str(b.nif, 40), city: b.city === undefined ? undefined : str(b.city, 100) });
+    await companies.updateCompany(c, { user: req.user, company, name: str(b.name, 200), nif: b.nif === undefined ? undefined : str(b.nif, 40),
+      city: b.city === undefined ? undefined : str(b.city, 100), country: b.country === undefined ? undefined : b.country });
   });
   res.json({ ok: true });
 });
@@ -124,8 +142,9 @@ async function companyState(user, company) {
   const { rows: evData } = await query('select item_id, type, actor_type, at, data from events where company_id = $1 and item_id is not null order by seq', [company.id]);
   const statusEvents = byItem(evData);
   return {
-    company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, created_at: company.created_at },
-    firm: config.firmName,
+    company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
+      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at },
+    firm: company.firm_name,
     members: members.rows,
     obligations: obligations.rows.map((o) => ({ ...o, description: companies.describeObligation(o) })),
     items: its.rows.map((i) => {
@@ -168,7 +187,7 @@ api.post('/companies/:id/obligations', json, async (req, res) => {
   await tx(async (c) => {
     const company = await companyFor(req.user, req.params.id, c);
     await companies.createObligation(c, { user: req.user, company, kind: b.kind, title: str(b.title, 200), category: str(b.category, 60),
-      frequency: b.frequency, dueDay: b.dueDay, dueMonth: b.dueMonth, leadDays: b.leadDays, note: str(b.note, 1000) });
+      frequency: b.frequency, dueDay: b.dueDay, dueMonth: b.dueMonth, monthOffset: b.monthOffset, leadDays: b.leadDays, note: str(b.note, 1000) });
   });
   flushEmails().catch((err) => console.error('mail', err));
   res.status(201).json({ ok: true });
@@ -193,6 +212,7 @@ api.post('/companies/:id/documents', async (req, res) => {
   const requestId = isUuid(fields.requestId) ? fields.requestId : null;
   try {
     await tx(async (c) => {
+      await lockCompany(c, company.id);
       for (const file of files) {
         await items.createDocument(c, { user: req.user, company, file, category: str(fields.category, 60) || 'Other',
           period: str(fields.period, 20), note: str(fields.note, 1000), requestId });
@@ -214,11 +234,14 @@ api.post('/companies/:id/reports', async (req, res) => {
   try {
     if (files.length !== 1) throw new HttpError(400, 'Attach the report file.');
     const expectedItemId = isUuid(fields.itemId) ? fields.itemId : null;
-    const dueAt = fields.due ? parseDay(fields.due) : null;
+    const dueAt = fields.due ? parseDay(fields.due, tzOf(company.country)) : null;
     if (!expectedItemId && !str(fields.title)) throw new HttpError(400, 'Give the report a title.');
     if (fields.due && !dueAt) throw new HttpError(400, 'The deadline is not a valid date.');
-    await tx((c) => items.createReport(c, { user: req.user, company, file: files[0], title: str(fields.title, 200),
-      category: str(fields.category, 60) || 'Other', dueAt, note: str(fields.note, 1000), expectedItemId }));
+    await tx(async (c) => {
+      await lockCompany(c, company.id);
+      await items.createReport(c, { user: req.user, company, file: files[0], title: str(fields.title, 200),
+        category: str(fields.category, 60) || 'Other', dueAt, note: str(fields.note, 1000), expectedItemId });
+    });
   } catch (err) {
     await discard(files);
     throw err;
@@ -229,11 +252,11 @@ api.post('/companies/:id/reports', async (req, res) => {
 
 api.post('/companies/:id/requests', json, async (req, res) => {
   const b = req.body || {};
-  const dueAt = parseDay(b.due);
   if (!str(b.title)) throw new HttpError(400, 'Describe the document you need.');
-  if (!dueAt) throw new HttpError(400, 'Set a due date.');
+  if (!parseDay(b.due)) throw new HttpError(400, 'Set a due date.');
   await tx(async (c) => {
     const company = await companyFor(req.user, req.params.id, c);
+    const dueAt = parseDay(b.due, tzOf(company.country));
     await items.createRequest(c, { user: req.user, company, title: str(b.title, 200), dueAt, note: str(b.note, 1000) });
   });
   flushEmails().catch((err) => console.error('mail', err));
@@ -244,8 +267,10 @@ api.post('/companies/:id/requests', json, async (req, res) => {
 
 async function itemFor(user, id, c) {
   if (!isUuid(id)) throw new HttpError(404, 'Item not found.');
-  const item = await items.loadItem(c || { query }, id, { lock: !!c });
-  const company = await companyFor(user, item.company_id, c);
+  const found = await items.loadItem(c || { query }, id);
+  const company = await companyFor(user, found.company_id, c);
+  // in a transaction: company first (locked by companyFor), then the item
+  const item = c ? await items.loadItem(c, id, { lock: true }) : found;
   return { item, company };
 }
 
@@ -408,18 +433,22 @@ function usageMonth(q) {
 async function usageReport(req) {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see AI costs.');
   const { month, from, to } = usageMonth(req.query.month);
+  const firmId = req.user.firm_id;
   const [byCompany, byModel, months, thisMonth] = await Promise.all([
     query(`select c.id as company_id, c.no, c.name, count(distinct u.version_id)::int as documents, count(*)::int as calls,
              count(*) filter (where u.outcome <> 'ok')::int as unsuccessful,
              sum(u.input_tokens + u.cache_write_tokens + u.cache_read_tokens)::bigint as input_tokens, sum(u.output_tokens)::bigint as output_tokens,
              sum(u.cost_usd)::float as cost_usd
            from ai_usage u join companies c on c.id = u.company_id
-           where u.created_at >= $1 and u.created_at < $2 group by c.id order by cost_usd desc`, [from, to]),
-    query(`select model, kind, count(*)::int as calls, sum(input_tokens + cache_write_tokens + cache_read_tokens)::bigint as input_tokens,
-             sum(output_tokens)::bigint as output_tokens, sum(cost_usd)::float as cost_usd
-           from ai_usage where created_at >= $1 and created_at < $2 group by model, kind order by model, kind`, [from, to]),
-    query(`select distinct to_char(date_trunc('month', created_at), 'YYYY-MM') as m from ai_usage order by m desc limit 24`),
-    query(`select coalesce(sum(cost_usd), 0)::float as spent from ai_usage where created_at >= date_trunc('month', now())`),
+           where c.firm_id = $3 and u.created_at >= $1 and u.created_at < $2 group by c.id order by cost_usd desc`, [from, to, firmId]),
+    query(`select u.model, u.kind, count(*)::int as calls, sum(u.input_tokens + u.cache_write_tokens + u.cache_read_tokens)::bigint as input_tokens,
+             sum(u.output_tokens)::bigint as output_tokens, sum(u.cost_usd)::float as cost_usd
+           from ai_usage u join companies c on c.id = u.company_id
+           where c.firm_id = $3 and u.created_at >= $1 and u.created_at < $2 group by u.model, u.kind order by u.model, u.kind`, [from, to, firmId]),
+    query(`select distinct to_char(date_trunc('month', u.created_at), 'YYYY-MM') as m from ai_usage u join companies c on c.id = u.company_id
+           where c.firm_id = $1 order by m desc limit 24`, [firmId]),
+    query(`select coalesce(sum(u.cost_usd), 0)::float as spent from ai_usage u join companies c on c.id = u.company_id
+           where c.firm_id = $1 and u.created_at >= date_trunc('month', now())`, [firmId]),
   ]);
   const rows = byCompany.rows.map((r) => ({ ...r, input_tokens: Number(r.input_tokens), output_tokens: Number(r.output_tokens) }));
   const sum = (k) => rows.reduce((a, r) => a + Number(r[k] || 0), 0);

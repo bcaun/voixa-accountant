@@ -3,15 +3,20 @@
 // the extracted data, logs what it found, and then looks for payment matches.
 import { config } from '../config.js';
 import { pool, tx } from '../db.js';
-import { appendEvent } from '../ledger.js';
+import { appendEvent, lockCompany } from '../ledger.js';
 import { storage } from '../storage.js';
 import { SYSTEM } from '../items.js';
+import { COMPANY_SQL } from '../auth.js';
 import { AiError, aiAvailable, readWithAi } from './ai.js';
 import { costOf } from './pricing.js';
 import { looksLikeNorma43, parseNorma43 } from './norma43.js';
 import { looksLikeCamt053, parseCamt053 } from './camt053.js';
 import { looksLikeCsv, parseCsv } from './csv.js';
+import { looksLikeCfonb120, parseCfonb120 } from './cfonb120.js';
+import { looksLikeMt940, parseMt940 } from './mt940.js';
+import { findEInvoice, parseEInvoice, EINVOICE_LABEL } from './einvoice.js';
 import { extractRefs, guessCounterparty, nameSimilarity, normRef } from './refs.js';
+import { sameTaxId } from '../countries.js';
 import { fmtMoney, matchCompany } from './matching.js';
 
 const KIND_BY_CATEGORY = { 'Bank statement': 'statement', 'Invoice': 'invoice' };
@@ -91,28 +96,49 @@ async function readStatement(job, type, buf, name) {
   if (type === 'text') {
     const text = decodeText(buf);
     if (looksLikeNorma43(text)) return { method: 'norma43', data: parseNorma43(text) };
+    if (looksLikeCfonb120(text)) return { method: 'cfonb120', data: parseCfonb120(text) };
+    if (looksLikeMt940(text)) return { method: 'mt940', data: parseMt940(text) };
     if (looksLikeCamt053(text)) return { method: 'camt053', data: parseCamt053(text) };
     if (looksLikeCsv(text)) {
       try { return { method: 'csv', data: parseCsv(text) }; } catch (err) {
         if (!aiAvailable()) throw new Unsupported(`The CSV columns were not recognised (${err.message}).`);
       }
     }
-    if (!aiAvailable()) throw new Unsupported('This text file is not Norma 43, camt.053 or a bank CSV, and reading other formats needs the AI reader, which is not configured.');
+    if (!aiAvailable()) throw new Unsupported('This text file is not Norma 43, CFONB 120, MT940, camt.053 or a bank CSV, and reading other formats needs the AI reader, which is not configured.');
     return ai(job, 'statement', { type: 'text', data: text.slice(0, 400000), name });
   }
   return readBinaryWithAi(job, 'statement', type, buf, name);
 }
 
+/** E-invoices (FatturaPA, UBL, CII, Factur-X / ZUGFeRD) are read exactly; anything else goes to the AI reader. */
+async function readInvoice(job, type, buf, name) {
+  const found = findEInvoice(buf, type);
+  if (found) {
+    try { return { method: found.format, data: parseEInvoice(found) }; } catch (err) {
+      if (!aiAvailable()) throw new Unsupported(`The ${EINVOICE_LABEL[found.format]} could not be read (${err.message}).`);
+    }
+  }
+  if (type === 'text') {
+    if (!aiAvailable()) throw new Unsupported('This text file is not an e-invoice (FatturaPA, UBL or CII XML), and reading other invoices needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).');
+    return ai(job, 'invoice', { type: 'text', data: decodeText(buf).slice(0, 400000), name });
+  }
+  return readBinaryWithAi(job, 'invoice', type, buf, name);
+}
+
 async function readBinaryWithAi(job, kind, type, buf, name) {
-  if (type === 'excel') throw new Unsupported('Excel files are not read yet. Export the statement as CSV, Norma 43 (AEB 43) or PDF and upload that.');
-  if (!['pdf', 'png', 'jpeg', 'gif', 'webp'].includes(type)) throw new Unsupported('This file type cannot be read. Upload a PDF, a photo, CSV, Norma 43 or camt.053.');
+  if (type === 'excel') throw new Unsupported('Excel files are not read yet. Export the statement as CSV, camt.053, the bank’s national format (Norma 43, CFONB 120, MT940) or PDF and upload that.');
+  if (!['pdf', 'png', 'jpeg', 'gif', 'webp'].includes(type)) throw new Unsupported('This file type cannot be read. Upload a PDF, a photo, an e-invoice XML, or a bank file (CSV, camt.053, Norma 43, CFONB 120, MT940).');
   if (!aiAvailable()) throw new Unsupported('Reading PDFs and images needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).');
   if (buf.length > config.recognition.maxAiFileMb * 1048576) throw new Unsupported(`The file is larger than ${config.recognition.maxAiFileMb} MB, the limit for automatic reading.`);
   return ai(job, kind, { type, data: buf, name });
 }
 
-async function monthSpend() {
-  const { rows: [r] } = await pool.query(`select coalesce(sum(cost_usd), 0)::float as spent from ai_usage where created_at >= date_trunc('month', now())`);
+/** This month's AI spending of the firm a job belongs to. The budget applies to each firm separately. */
+async function monthSpend(job) {
+  const { rows: [r] } = await pool.query(
+    `select coalesce(sum(u.cost_usd), 0)::float as spent from ai_usage u join companies c on c.id = u.company_id
+     where c.firm_id = (select co.firm_id from items i join companies co on co.id = i.company_id where i.id = $1)
+       and u.created_at >= date_trunc('month', now())`, [job.item_id]);
   return r.spent;
 }
 
@@ -130,12 +156,12 @@ async function recordUsage(job, kind, spent, outcome) {
 
 async function ai(job, kind, file) {
   const budget = config.recognition.monthlyBudgetUsd;
-  if (budget > 0 && (await monthSpend()) >= budget) {
+  if (budget > 0 && (await monthSpend(job)) >= budget) {
     throw new Unsupported(`This month's AI reading budget ($${budget}) has been reached. The file can be read again next month, or after the budget is raised.`);
   }
   let res;
   try {
-    res = await readWithAi(kind, file);
+    res = await readWithAi(kind, file, { country: job.country });
   } catch (err) {
     if (err instanceof AiError) {
       await recordUsage(job, kind, err.spent, err.outcome);
@@ -172,19 +198,17 @@ function normaliseTx(t, currency) {
 async function recognise(job) {
   const { rows: [ctx] } = await pool.query(
     `select row_to_json(i) as item, row_to_json(v) as version, row_to_json(c) as company
-     from items i join versions v on v.id = $2 join companies c on c.id = i.company_id where i.id = $1`, [job.item_id, job.version_id]);
+     from items i join versions v on v.id = $2 join (${COMPANY_SQL}) c on c.id = i.company_id where i.id = $1`, [job.item_id, job.version_id]);
   if (!ctx) return;
   const { item, version, company } = ctx;
+  job.country = company.country;
   const buf = await readAll(await storage.get(version.storage_key));
   const type = sniff(buf, version.file_name);
   let result;
   try {
     result = job.as_kind === 'statement'
       ? await readStatement(job, type, buf, version.file_name)
-      : type === 'text'
-        ? (aiAvailable() ? await ai(job, 'invoice', { type: 'text', data: decodeText(buf).slice(0, 400000), name: version.file_name })
-          : (() => { throw new Unsupported('Reading invoices needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).'); })())
-        : await readBinaryWithAi(job, 'invoice', type, buf, version.file_name);
+      : await readInvoice(job, type, buf, version.file_name);
   } catch (err) {
     if (err instanceof Unsupported) return saveFailure(job, 'unsupported', err.message);
     throw err;
@@ -205,7 +229,8 @@ async function replaceExtraction(c, job, company, fields) {
 async function saveFailure(job, status, message) {
   await tx(async (c) => {
     const { rows: [item] } = await c.query('select * from items where id = $1', [job.item_id]);
-    const { rows: [company] } = await c.query('select * from companies where id = $1', [item.company_id]);
+    await lockCompany(c, item.company_id);
+    const { rows: [company] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [item.company_id]);
     await replaceExtraction(c, job, company, { status, error: message });
     await appendEvent(c, { companyId: company.id, itemId: item.id, versionId: job.version_id, actor: SYSTEM, type: 'recognition_failed',
       text: `Automatic reading of the ${job.as_kind === 'statement' ? 'bank statement' : 'invoice'} did not work: ${message}`, data: { reason: message } });
@@ -230,6 +255,7 @@ async function saveStatement(job, item, version, company, { method, model, data 
     summary.balance_check = Math.abs(diff) < 0.01 ? 'ok' : `off by ${fmtMoney(diff, currency)}`;
   }
   await tx(async (c) => {
+    await lockCompany(c, company.id);
     const e = await replaceExtraction(c, job, company, { status: 'done', method, model, summary });
     let line = 0;
     for (const t of txs) {
@@ -242,7 +268,7 @@ async function saveStatement(job, item, version, company, { method, model, data 
           t.counterparty_tax_id, t.purpose, t.invoice_refs, t.contract_refs, t.bank_reference]);
     }
     const withInv = txs.filter((t) => t.invoice_refs.length).length, withCtr = txs.filter((t) => t.contract_refs.length).length;
-    const label = { norma43: 'Norma 43 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading of the document' }[method];
+    const label = { norma43: 'Norma 43 file', cfonb120: 'CFONB 120 file', mt940: 'MT940 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading of the document' }[method];
     await appendEvent(c, { companyId: company.id, itemId: item.id, versionId: version.id, actor: SYSTEM, type: 'statement_recognised',
       text: `Recognised ${[summary.bank_name, 'bank statement'].filter(Boolean).join(' ')}${summary.iban ? ` ${maskIban(summary.iban)}` : ''}`
         + `${summary.period_start ? `, ${summary.period_start} to ${summary.period_end}` : ''}: ${txs.length} transactions`
@@ -254,8 +280,7 @@ async function saveStatement(job, item, version, company, { method, model, data 
 }
 
 function invoiceDirection(company, inv) {
-  const id = normRef(company.nif).replace(/^ES/, '');
-  const same = (tax, name) => (id && tax && normRef(tax).replace(/^ES/, '') === id) || nameSimilarity(name, company.name) >= 0.6;
+  const same = (tax, name) => (company.nif && tax && sameTaxId(tax, company.nif)) || nameSimilarity(name, company.name) >= 0.6;
   if (same(inv.issuer_tax_id, inv.issuer_name)) return 'issued';
   if (same(inv.recipient_tax_id, inv.recipient_name)) return 'received';
   return 'unknown';
@@ -269,8 +294,11 @@ async function saveInvoice(job, item, version, company, { method, model, data })
     currency: clip(data.currency, 3)?.toUpperCase() || 'EUR', net_amount: round2(data.net_amount), tax_amount: round2(data.tax_amount),
     total_amount: round2(data.total_amount), contract_number: clip(data.contract_number, 60),
   };
+  if (data.document_type) inv.document_type = clip(data.document_type, 40);
+  if (data.extra_invoices) inv.extra_invoices = data.extra_invoices;
   inv.direction = invoiceDirection(company, inv);
   await tx(async (c) => {
+    await lockCompany(c, company.id);
     const e = await replaceExtraction(c, job, company, { status: 'done', method, model, summary: inv });
     await c.query(
       `insert into invoice_data (extraction_id, company_id, item_id, invoice_number, issue_date, due_date, issuer_name, issuer_tax_id,
@@ -281,7 +309,8 @@ async function saveInvoice(job, item, version, company, { method, model, data })
     const party = inv.direction === 'issued' ? `to ${inv.recipient_name || 'unknown customer'}` : `from ${inv.issuer_name || 'unknown supplier'}`;
     await appendEvent(c, { companyId: company.id, itemId: item.id, versionId: version.id, actor: SYSTEM, type: 'invoice_recognised',
       text: `Recognised invoice ${inv.invoice_number || '(no number)'} ${party}`
-        + `${inv.total_amount != null ? `, total ${fmtMoney(inv.total_amount, inv.currency)}` : ''}${inv.issue_date ? `, dated ${inv.issue_date}` : ''}.`,
+        + `${inv.total_amount != null ? `, total ${fmtMoney(inv.total_amount, inv.currency)}` : ''}${inv.issue_date ? `, dated ${inv.issue_date}` : ''}.`
+        + ` Source: ${EINVOICE_LABEL[method] || 'AI reading of the document'}.`,
       data: { extraction_id: e.id, method, invoice_number: inv.invoice_number, total: inv.total_amount, currency: inv.currency, direction: inv.direction } });
     await matchCompany(c, company);
   });

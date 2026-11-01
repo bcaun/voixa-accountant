@@ -1,18 +1,22 @@
-// Bank CSV exports. Column names differ from bank to bank and between Spanish
-// and English, so columns are found by name and numbers and dates are read in
+// Bank CSV exports. Column names differ from bank to bank and between languages
+// (Spanish, Italian, French, German, Portuguese, English), so columns are found by name and numbers and dates are read in
 // both "1.234,56 / 31/12/2026" and "1,234.56 / 2026-12-31" styles.
 
 const COLS = {
-  date: ['fecha', 'fecha operacion', 'fecha operación', 'f. operacion', 'f. operación', 'fecha contable', 'f. contable', 'date', 'booking date', 'transaction date', 'posting date', 'datum'],
-  value_date: ['fecha valor', 'f. valor', 'value date', 'valuta'],
-  purpose: ['concepto', 'descripcion', 'descripción', 'description', 'details', 'movimiento', 'concept', 'detalle', 'observaciones', 'narrative', 'memo', 'reference', 'referencia', 'remittance information', 'purpose'],
-  amount: ['importe', 'amount', 'cantidad', 'importe eur', 'importe (eur)', 'betrag'],
-  debit: ['cargo', 'cargos', 'debe', 'debit', 'debito', 'débito', 'withdrawal', 'withdrawals', 'paid out', 'money out'],
-  credit: ['abono', 'abonos', 'haber', 'credit', 'credito', 'crédito', 'deposit', 'deposits', 'paid in', 'money in'],
-  currency: ['divisa', 'moneda', 'currency'],
-  balance: ['saldo', 'balance', 'saldo disponible'],
-  counterparty: ['beneficiario', 'ordenante', 'contrapartida', 'counterparty', 'payee', 'payer', 'nombre', 'name', 'beneficiary'],
-  counterparty_iban: ['iban contrapartida', 'cuenta contrapartida', 'counterparty iban', 'counterparty account', 'iban beneficiario', 'iban ordenante'],
+  date: ['fecha', 'fecha operacion', 'fecha operación', 'f. operacion', 'f. operación', 'fecha contable', 'f. contable', 'date', 'booking date', 'transaction date', 'posting date', 'datum',
+    'data', 'data operazione', 'data contabile', 'data registrazione', 'date operation', 'date opération', 'date comptable', 'date de l operation', 'buchungstag', 'buchungsdatum',
+    'data movimento', 'data lancamento', 'data lançamento', 'data mov.', 'data operacao', 'data operação'],
+  value_date: ['fecha valor', 'f. valor', 'value date', 'valuta', 'data valuta', 'date de valeur', 'date valeur', 'wertstellung', 'valutadatum', 'data valor', 'data-valor'],
+  purpose: ['concepto', 'descripcion', 'descripción', 'description', 'details', 'movimento', 'concept', 'detalle', 'observaciones', 'narrative', 'memo', 'reference', 'referencia', 'remittance information', 'purpose',
+    'descrizione', 'causale', 'descrizione operazione', 'libelle', 'libellé', 'libelle operation', 'verwendungszweck', 'buchungstext', 'descricao', 'descrição', 'descritivo'],
+  amount: ['importe', 'amount', 'cantidad', 'importe eur', 'importe (eur)', 'betrag', 'importo', 'importo (eur)', 'importo eur', 'montant', 'montant (eur)', 'montant eur', 'betrag (eur)', 'betrag eur', 'montante', 'valor', 'montante (eur)'],
+  debit: ['cargo', 'cargos', 'debe', 'debit', 'debito', 'débito', 'withdrawal', 'withdrawals', 'paid out', 'money out', 'dare', 'addebiti', 'uscite', 'débit', 'soll', 'saida', 'saída', 'debitos', 'débitos'],
+  credit: ['abono', 'abonos', 'haber', 'credit', 'credito', 'crédito', 'deposit', 'deposits', 'paid in', 'money in', 'avere', 'accrediti', 'entrate', 'crédit', 'haben', 'entrada', 'creditos', 'créditos'],
+  currency: ['divisa', 'moneda', 'currency', 'devise', 'währung', 'wahrung', 'waehrung', 'moeda'],
+  balance: ['saldo', 'balance', 'saldo disponible', 'solde', 'kontostand', 'saldo contabile', 'saldo contabilístico'],
+  counterparty: ['beneficiario', 'ordenante', 'contrapartida', 'counterparty', 'payee', 'payer', 'nombre', 'name', 'beneficiary', 'ordinante', 'controparte', 'tiers', 'bénéficiaire',
+    'auftraggeber', 'empfänger', 'empfanger', 'zahlungsempfänger', 'zahlungsempfanger', 'name zahlungsbeteiligter', 'beguenstigter zahlungspflichtiger', 'beneficiário', 'beneficiario ordenante'],
+  counterparty_iban: ['iban contrapartida', 'cuenta contrapartida', 'counterparty iban', 'counterparty account', 'iban beneficiario', 'iban ordenante', 'iban zahlungsbeteiligter', 'iban controparte', 'iban beneficiaire', 'iban bénéficiaire', 'kontonummer iban'],
 };
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9. ()]/g, ' ').replace(/\s+/g, ' ').trim();

@@ -1,10 +1,10 @@
 // Exports for disputes: the raw log as CSV, and a printable tracking report
 // (open it in a browser and print or save as PDF).
-import { config } from './config.js';
 import { query } from './db.js';
 import { verifyCompany } from './ledger.js';
 import { computeStatus, fmtSize, refOf } from './items.js';
-import { fmtDay, fmtTime } from './dates.js';
+import { fmtDay as fmtDayTz, fmtTime as fmtTimeTz, cityOf } from './dates.js';
+import { countryOf, tzOf } from './countries.js';
 
 const csvCell = (v) => {
   let s = v == null ? '' : v instanceof Date ? v.toISOString() : String(v);
@@ -13,10 +13,12 @@ const csvCell = (v) => {
 };
 
 export async function exportCsv(company) {
+  const tz = tzOf(company.country);
+  const fmtTime = (d) => fmtTimeTz(d, tz);
   const { rows } = await query(
     `select e.*, i.seq as item_seq, i.title as item_title from events e left join items i on i.id = e.item_id
      where e.company_id = $1 order by e.seq`, [company.id]);
-  const head = ['seq', 'time_utc', 'time_madrid', 'actor_type', 'actor_name', 'event', 'ref', 'item', 'description', 'data', 'prev_hash', 'hash'];
+  const head = ['seq', 'time_utc', `time_${cityOf(tz).toLowerCase()}`, 'actor_type', 'actor_name', 'event', 'ref', 'item', 'description', 'data', 'prev_hash', 'hash'];
   const lines = [head.join(',')];
   for (const e of rows) {
     lines.push([e.seq, e.at, fmtTime(e.at), e.actor_type, e.actor_name, e.type,
@@ -29,6 +31,8 @@ export async function exportCsv(company) {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export async function exportReport(company, { itemId, by }) {
+  const tz = tzOf(company.country);
+  const fmtTime = (d) => fmtTimeTz(d, tz), fmtDay = (d) => fmtDayTz(d, tz);
   const verification = await verifyCompany({ query }, company.id);
   const { rows: its } = await query(`select * from items where company_id = $1 ${itemId ? 'and id = $2' : ''} order by seq`, itemId ? [company.id, itemId] : [company.id]);
   const ids = its.map((i) => i.id);
@@ -58,8 +62,8 @@ table{border-collapse:collapse;width:100%} th,td{border-bottom:1px solid #E1E7EC
 @media print{body{margin:12mm} a{color:inherit}}
 </style></head><body>
 <h1>${esc(title)}</h1>
-<div class="mu">${esc(company.name)} · Client #${company.no}${company.nif ? ` · NIF ${esc(company.nif)}` : ''} · ${esc(config.firmName)}</div>
-<div class="mu">Generated ${fmtTime(new Date())} by ${esc(by.name || by.email)}. Times are Madrid time.</div>
+<div class="mu">${esc(company.name)} · Client #${company.no}${company.nif ? ` · ${esc(countryOf(company.country).taxIdLabel)} ${esc(company.nif)}` : ''} · ${esc(countryOf(company.country).name)} · ${esc(company.firm_name)}</div>
+<div class="mu">Generated ${fmtTime(new Date())} by ${esc(by.name || by.email)}. Times are ${cityOf(tz)} time.</div>
 <div class="box">${verification.ok
     ? `<span class="ok">Log verified.</span> ${verification.count} entries; every entry matches its SHA-256 hash and links to the one before it. Latest hash: <span class="m">${verification.headHash || '—'}</span>`
     : `<span class="bad">Log check failed:</span> ${esc(verification.reason)}.`}</div>

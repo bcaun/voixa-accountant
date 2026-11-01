@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { config } from '../config.js';
+import { countryOf } from '../countries.js';
 
 const str = z.string().nullable();
 const num = z.number().nullable();
@@ -51,25 +52,29 @@ export const InvoiceSchema = z.object({
   contract_number: str,
 });
 
-const SYSTEM = `You read financial documents for a Spanish accounting firm and return their contents as data.
-Documents are usually in Spanish or English and come from Spanish banks and suppliers.
+/** The instructions depend on the client's country: language, tax IDs and the words banks use. */
+export function systemPrompt(code) {
+  const c = countryOf(code);
+  return `You read financial documents for an accounting firm whose client is a company in ${c.name}, and return their contents as data.
+Documents are usually in ${c.language} or English and mostly come from banks and suppliers in ${c.name}, but may come from anywhere in the EU.
 Report only what is printed in the document. When a value is not shown, return null; never estimate or fill in a value from context.
-Dates are YYYY-MM-DD. Amounts are plain numbers with a dot as the decimal separator (1.234,56 € becomes 1234.56). Currency is the ISO code (EUR, USD, GBP).
-Tax IDs are Spanish NIF/CIF/NIE or EU VAT numbers, without spaces. IBANs are without spaces.`;
+Dates are YYYY-MM-DD; read day-first dates (31/12/2026, 31.12.2026) as day-first. Amounts are plain numbers with a dot as the decimal separator (1.234,56 € becomes 1234.56). Currency is the ISO code (EUR, USD, GBP, CHF).
+Tax IDs are returned without spaces or dots. In ${c.name} they are: ${c.taxIdNames}. Other EU VAT numbers start with the country code. IBANs are without spaces.`;
+}
 
-const STATEMENT_TASK = `This file should be a bank account statement (extracto bancario).
+const STATEMENT_TASK = `This file should be a bank account statement (extracto bancario, estratto conto, relevé bancaire, Kontoauszug, extrato bancário).
 Set is_bank_statement to false if it is not one, and return no transactions.
 Otherwise list every movement in the order printed, across all pages. For each movement:
-- amount: negative when money leaves the account (cargo, debe, adeudo, payment out), positive when it comes in (abono, haber).
+- amount: negative when money leaves the account (payment out: cargo, addebito, dare, débit, Soll, Lastschrift, débito), positive when it comes in (abono, accredito, avere, crédit, Haben, Gutschrift, crédito).
 - purpose: the full description text of the movement exactly as printed (concepto, referencias, remittance text), joined into one line.
 - counterparty_name: the other party (beneficiary of a payment out, payer of a payment in) when the text names one; otherwise null.
-- invoice_numbers: invoice numbers that appear in the movement text (after words like factura, fra, fact, invoice, inv, recibo), exactly as written. Empty when none.
-- contract_numbers: contract, policy or agreement numbers that appear in the movement text (contrato, póliza, contract). Empty when none.
+- invoice_numbers: invoice numbers that appear in the movement text (after words like invoice, inv, factura, fra, fattura, ft, facture, Rechnung, RE, fatura), exactly as written. Empty when none.
+- contract_numbers: contract, policy or agreement numbers that appear in the movement text (contract, contrato, póliza, contratto, polizza, contrat, police, Vertrag, apólice). Empty when none.
 - counterparty_iban and counterparty_tax_id only when printed for that movement.
 - bank_reference: the bank's own reference for the movement, when printed.
 Include opening and closing balances and the statement period when printed.`;
 
-const INVOICE_TASK = `This file should be an invoice (factura) or a receipt with an invoice number.
+const INVOICE_TASK = `This file should be an invoice (factura, fattura, facture, Rechnung, fatura) or a receipt with an invoice number.
 Set is_invoice to false if it is not one.
 Otherwise return the invoice number exactly as printed, the issuer (who sells) and the recipient (who buys) with their tax IDs, the issue and due dates,
 the currency, the taxable base (net_amount), the VAT or other tax (tax_amount) and the total payable (total_amount),
@@ -88,8 +93,8 @@ const MEDIA = { pdf: 'application/pdf', png: 'image/png', jpeg: 'image/jpeg', gi
  * Returns { data, model, usage }; usage is the API's usage block, used for cost tracking.
  * kind: 'statement' | 'invoice'. file: { type: 'pdf'|'png'|'jpeg'|'gif'|'webp'|'text', data: Buffer|string, name }
  */
-export async function readWithAi(kind, file) {
-  if (override) return override(kind, file);
+export async function readWithAi(kind, file, { country } = {}) {
+  if (override) return override(kind, file, { country });
   client ??= new Anthropic({ timeout: 15 * 60e3, maxRetries: 2 });
   const schema = kind === 'statement' ? StatementSchema : InvoiceSchema;
   const source = file.type === 'text'
@@ -104,7 +109,7 @@ export async function readWithAi(kind, file) {
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'medium', format: zodOutputFormat(schema) },
-    system: SYSTEM,
+    system: systemPrompt(country),
     messages: [{ role: 'user', content: [source, { type: 'text', text: kind === 'statement' ? STATEMENT_TASK : INVOICE_TASK }] }],
   });
   const msg = await stream.finalMessage();

@@ -15,15 +15,15 @@ export async function createLoginLink(userId, db = { query }) {
   return `${config.appUrl}/auth/verify?token=${token}`;
 }
 
-export async function sendLoginLink(client, user, { invitedBy, companyName, companyId } = {}) {
+export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName } = {}) {
   const url = await createLoginLink(user.id, client);
   const heading = invitedBy ? `${invitedBy} invited you to ${companyName}` : 'Sign in to Pescada';
   const lines = invitedBy
-    ? [`You now have access to the ${companyName} workspace on Pescada, where documents are exchanged with ${config.firmName} and every step is recorded.`,
+    ? [`You now have access to the ${companyName} workspace on Pescada, where documents are exchanged with ${firmName || 'your accountant'} and every step is recorded.`,
        `The button below signs you in. It works once and expires in ${config.loginLinkMinutes} minutes; you can always request a new link on the sign-in page.`]
     : [`Use the button below to sign in. The link works once and expires in ${config.loginLinkMinutes} minutes.`,
        'If you did not ask for this, ignore this email.'];
-  const { html, text } = renderEmail({ heading, lines, button: { label: 'Sign in', url }, footer: `${config.firmName} · Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.` });
+  const { html, text } = renderEmail({ heading, lines, button: { label: 'Sign in', url }, footer: `${firmName ? `${firmName} · ` : ''}Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.` });
   await queueEmail(client, { companyId, toUserId: user.id, toEmail: user.email, kind: invitedBy ? 'invite' : 'login', subject: heading, html, text });
 }
 
@@ -93,12 +93,22 @@ export const actorOf = (user) => ({ type: user.role, id: user.id, name: user.nam
 /** Load a company the user may act in, or fail with 404. */
 export const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v));
 
-export async function companyFor(user, companyId, db = { query }) {
+/** A company row with its firm's name and country, as every module expects it. */
+export const COMPANY_SQL = 'select c.*, f.name as firm_name, f.country as firm_country from companies c join firms f on f.id = c.firm_id';
+
+/** Accountants reach only their own firm's clients; client users only the companies they are members of. */
+/**
+ * Inside a transaction (db given) the company row is locked first, so every writer takes
+ * the company lock before any item lock and concurrent transactions cannot deadlock.
+ */
+export async function companyFor(user, companyId, db) {
   if (!isUuid(companyId)) throw new HttpError(404, 'Workspace not found.');
+  const q = db || { query };
+  const lock = db ? ' for update of c' : '';
   const { rows: [c] } = user.role === 'accountant'
-    ? await db.query('select * from companies where id = $1', [companyId])
-    : await db.query(`select c.* from companies c join memberships m on m.company_id = c.id
-                      where c.id = $1 and m.user_id = $2 and m.removed_at is null`, [companyId, user.id]);
+    ? await q.query(`${COMPANY_SQL} where c.id = $1 and c.firm_id = $2${lock}`, [companyId, user.firm_id])
+    : await q.query(`${COMPANY_SQL} join memberships m on m.company_id = c.id
+                      where c.id = $1 and m.user_id = $2 and m.removed_at is null${lock}`, [companyId, user.id]);
   if (!c) throw new HttpError(404, 'Workspace not found.');
   return c;
 }

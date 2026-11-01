@@ -5,7 +5,8 @@ import { config } from './config.js';
 import { appendEvent } from './ledger.js';
 import { queueEmail, renderEmail } from './mailer.js';
 import { HttpError, actorOf } from './auth.js';
-import { fmtDay, fmtTime } from './dates.js';
+import { fmtDay as fmtDayTz, fmtTime as fmtTimeTz } from './dates.js';
+import { tzOf } from './countries.js';
 import { enqueueRecognition } from './recognition/recognize.js';
 
 export const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
@@ -13,6 +14,9 @@ export const recipientSide = (kind) => (kind === 'doc' ? 'accountant' : 'client'
 export const senderSide = (kind) => (kind === 'doc' ? 'client' : 'accountant');
 export const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`);
 export const refOf = (company, item) => `PX-${String(company.no).padStart(3, '0')}-${String(item.seq).padStart(4, '0')}`;
+// dates are shown in the client's country time
+const fmtDay = (d, company) => fmtDayTz(d, tzOf(company?.country));
+const fmtTime = (d, company) => fmtTimeTz(d, tzOf(company?.country));
 const doneWord = (kind) => (kind === 'doc' ? 'confirmed receipt of' : kind === 'report' ? 'approved' : 'fulfilled');
 
 /** Derive an item's status from its events (oldest first). */
@@ -59,7 +63,10 @@ export async function recompute(c, itemId) {
 /** People on one side of a company's workspace who should hear about it. */
 export async function sideUsers(c, companyId, side) {
   if (side === 'accountant') {
-    return (await c.query(`select id, email, name from users where role = 'accountant' and disabled_at is null`)).rows;
+    // the accountants of the firm the client belongs to, and no one else
+    return (await c.query(
+      `select u.id, u.email, u.name from users u join companies co on co.firm_id = u.firm_id
+       where co.id = $1 and u.role = 'accountant' and u.disabled_at is null`, [companyId])).rows;
   }
   return (await c.query(
     `select u.id, u.email, u.name from memberships m join users u on u.id = m.user_id
@@ -70,7 +77,8 @@ export async function notify(c, { company, item, side, kind, subject, heading, l
   const url = `${config.appUrl}/#/c/${company.id}${item ? `/i/${item.id}` : ''}`;
   for (const u of await sideUsers(c, company.id, side)) {
     if (u.id === exceptUserId) continue;
-    const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Pescada' : 'Open the workspace', url } });
+    const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Pescada' : 'Open the workspace', url },
+      footer: `${company.firm_name} · Pescada. This message and every action on the document are recorded in the workspace log.` });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });
   }
 }
@@ -155,14 +163,14 @@ export async function createReport(c, { user, company, file, title, category, du
   const v = await insertVersion(c, it, file, user);
   const late = it.due_at && new Date() > it.due_at;
   await appendEvent(c, { companyId: company.id, itemId: it.id, versionId: v.id, actor: actorOf(user), type: 'uploaded',
-    text: `${actorOf(user).name} sent the report “${file.name}” (${fmtSize(file.size)})${it.due_at ? `, deadline ${fmtDay(it.due_at)}${late ? ' (sent late)' : ''}` : ''}`,
+    text: `${actorOf(user).name} sent the report “${file.name}” (${fmtSize(file.size)})${it.due_at ? `, deadline ${fmtDay(it.due_at, company)}${late ? ' (sent late)' : ''}` : ''}`,
     data: { version: 1, file: file.name, size: file.size, sha256: file.sha256, due_at: it.due_at, late: !!late } });
   if (note) await appendEvent(c, { companyId: company.id, itemId: it.id, actor: actorOf(user), type: 'comment', text: `${actorOf(user).name}: “${note}”`, data: { message: note } });
   await notify(c, { company, item: it, side: 'client', kind: 'new_report',
-    subject: `${config.firmName}: ${it.title}`,
+    subject: `${company.firm_name}: ${it.title}`,
     heading: `New report: ${it.title}`,
-    lines: [`${actorOf(user).name} at ${config.firmName} sent you “${file.name}”.`,
-      it.due_at ? `Deadline: ${fmtDay(it.due_at)}. Please open it and approve it, or ask for changes.` : 'Please open it and approve it, or ask for changes.',
+    lines: [`${actorOf(user).name} at ${company.firm_name} sent you “${file.name}”.`,
+      it.due_at ? `Deadline: ${fmtDay(it.due_at, company)}. Please open it and approve it, or ask for changes.` : 'Please open it and approve it, or ask for changes.',
       ...(note ? [`Message: ${note}`] : [])] });
   await recompute(c, it.id);
   return it;
@@ -173,11 +181,11 @@ export async function createRequest(c, { user, company, title, dueAt, note, cate
   const actor = user ? actorOf(user) : SYSTEM;
   const it = await insertItem(c, { company_id: company.id, kind: 'request', title, category: category || 'Request', period, note, due_at: dueAt, obligation_id: obligationId, created_by: user?.id });
   await appendEvent(c, { companyId: company.id, itemId: it.id, actor, type: 'requested',
-    text: `${actor.name} requested “${title}”, due ${fmtDay(dueAt)}${obligationId ? ' (recurring)' : ''}`, data: { due_at: dueAt, obligation_id: obligationId ?? null } });
+    text: `${actor.name} requested “${title}”, due ${fmtDay(dueAt, company)}${obligationId ? ' (recurring)' : ''}`, data: { due_at: dueAt, obligation_id: obligationId ?? null } });
   await notify(c, { company, item: it, side: 'client', kind: 'request',
-    subject: `Document needed by ${fmtDay(dueAt)}: ${title}`,
-    heading: `${config.firmName} needs a document`,
-    lines: [`Please upload: ${title}.`, `Due: ${fmtDay(dueAt)}.`, ...(note ? [note] : [])] });
+    subject: `Document needed by ${fmtDay(dueAt, company)}: ${title}`,
+    heading: `${company.firm_name} needs a document`,
+    lines: [`Please upload: ${title}.`, `Due: ${fmtDay(dueAt, company)}.`, ...(note ? [note] : [])] });
   await recompute(c, it.id);
   return it;
 }
@@ -185,7 +193,7 @@ export async function createRequest(c, { user, company, title, dueAt, note, cate
 export async function createExpectedReport(c, { company, title, category, period, dueAt, obligationId }) {
   const it = await insertItem(c, { company_id: company.id, kind: 'report', title, category, period, due_at: dueAt, obligation_id: obligationId });
   await appendEvent(c, { companyId: company.id, itemId: it.id, actor: SYSTEM, type: 'expected',
-    text: `Report “${title}” is due from ${config.firmName} by ${fmtDay(dueAt)}`, data: { due_at: dueAt, obligation_id: obligationId } });
+    text: `Report “${title}” is due from ${company.firm_name} by ${fmtDay(dueAt, company)}`, data: { due_at: dueAt, obligation_id: obligationId } });
   await recompute(c, it.id);
   return it;
 }
@@ -239,7 +247,7 @@ export async function confirm(c, { user, company, item }) {
   await notify(c, { company, item, side: senderSide(item.kind), kind: 'confirmed',
     subject: `${item.kind === 'report' ? 'Approved' : 'Received'}: ${item.title}`,
     heading: `${actorOf(user).name} ${doneWord(item.kind)} “${item.title}”`,
-    lines: [`Version ${item.version} was ${item.kind === 'report' ? 'approved' : 'confirmed as received'} on ${fmtTime(new Date())}.`, 'This is recorded in the workspace log.'] });
+    lines: [`Version ${item.version} was ${item.kind === 'report' ? 'approved' : 'confirmed as received'} on ${fmtTime(new Date(), company)}.`, 'This is recorded in the workspace log.'] });
   return recompute(c, item.id);
 }
 
@@ -271,12 +279,12 @@ export async function remind(c, { user, company, item }) {
     text: `${actorOf(user).name} sent a reminder`, data: {} });
   await notify(c, { company, item, side, kind: 'reminder',
     subject: `Reminder: ${item.title}`, heading: `Reminder from ${actorOf(user).name}`,
-    lines: [reminderLine(item)] });
+    lines: [reminderLine(item, company)] });
   return recompute(c, item.id);
 }
 
-export function reminderLine(item) {
-  if (item.kind === 'request') return `“${item.title}” is due ${item.due_at ? fmtDay(item.due_at) : 'soon'} and has not been uploaded yet.`;
+export function reminderLine(item, company) {
+  if (item.kind === 'request') return `“${item.title}” is due ${item.due_at ? fmtDay(item.due_at, company) : 'soon'} and has not been uploaded yet.`;
   if (item.state === 'opened') return `“${item.title}” was opened but not yet ${item.kind === 'doc' ? 'confirmed as received' : 'approved'}.`;
   return `“${item.title}” is waiting for you and has not been opened yet.`;
 }

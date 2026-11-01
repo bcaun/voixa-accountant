@@ -5,6 +5,7 @@ import { appendEvent } from '../ledger.js';
 import { HttpError, actorOf } from '../auth.js';
 import { SYSTEM, refOf } from '../items.js';
 import { extractRefs, guessCounterparty, nameSimilarity, normRef, sameRef } from './refs.js';
+import { sameTaxId } from '../countries.js';
 
 export const MATCH_THRESHOLD = 50;
 const DAY = 864e5;
@@ -36,8 +37,8 @@ export function scoreMatch(tx, inv) {
   const other = inv.direction === 'issued' ? [[inv.recipient_name, inv.recipient_tax_id]]
     : inv.direction === 'received' ? [[inv.issuer_name, inv.issuer_tax_id]]
       : [[inv.issuer_name, inv.issuer_tax_id], [inv.recipient_name, inv.recipient_tax_id]];
-  const txTaxIds = new Set([tx.counterparty_tax_id, ...extractRefs(tx.purpose).taxIds].filter(Boolean).map(normRef));
-  const taxHit = other.some(([, id]) => id && (txTaxIds.has(normRef(id)) || txTaxIds.has(normRef(id).replace(/^ES/, ''))));
+  const txTaxIds = [tx.counterparty_tax_id, ...extractRefs(tx.purpose).taxIds].filter(Boolean);
+  const taxHit = other.some(([, id]) => id && txTaxIds.some((t) => sameTaxId(t, id)));
   if (taxHit) { score += 25; reasons.push('tax ID matches'); }
   const txName = tx.counterparty_name || guessCounterparty(tx.purpose) || tx.purpose;
   const sim = Math.max(0, ...other.map(([n]) => nameSimilarity(txName, n)));

@@ -12,10 +12,15 @@ const DOC_TYPES = ['Invoice', 'Bank statement', 'Contract', 'Receipt', 'Other'];
 const REPORT_TYPES = ['Tax return', 'Financial statements', 'Payroll', 'Other'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const S = { me: null, firm: '', companies: [], overview: null, ws: null, wsId: null, route: { c: null, i: null }, tab: {}, search: '', shellKey: '', verify: null, seen: new Set() };
+const S = { me: null, firm: '', firmInfo: null, countries: [], companies: [], overview: null, ws: null, wsId: null, route: { c: null, i: null }, tab: {}, search: '', shellKey: '', verify: null, seen: new Set() };
 
 /* ---------- formatting ---------- */
-const TZ = 'Europe/Madrid';
+// dates show in the open client's country time, or the firm's on the overview
+let TZ = 'Europe/Madrid';
+const COUNTRY = (code) => S.countries.find((c) => c.code === code) || { code, name: code || '', taxIdLabel: 'Tax ID', taxIdHint: '', presets: [], tz: 'Europe/Madrid' };
+const taxLabel = (code) => COUNTRY(code).taxIdLabel;
+const cityOfTz = () => TZ.split('/').pop().replace(/_/g, ' ');
+const countryOptions = (sel) => S.countries.map((c) => `<option value="${c.code}" ${c.code === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
 const fmt = (t) => new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: TZ });
 const fmtShort = (t) => new Date(t).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ });
 const fmtDate = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: TZ });
@@ -84,10 +89,11 @@ async function refresh() {
       const [ws, rec] = await Promise.all([api(`/companies/${S.route.c}`), api(`/companies/${S.route.c}/recognition`)]);
       S.ws = ws; S.rec = rec;
       S.wsId = S.route.c;
+      TZ = ws.company.tz || TZ;
       // while files are being read, check back soon
       clearTimeout(S.recTimer);
       if (rec.pending.length) S.recTimer = setTimeout(refresh, 4000);
-    } else { S.ws = null; S.wsId = null; }
+    } else { S.ws = null; S.wsId = null; if (S.firmInfo) TZ = COUNTRY(S.firmInfo.country).tz; }
   } catch (err) {
     if (err.status === 404) { toast('That workspace is not available to you.'); return go(null); }
     toast(err.message);
@@ -167,8 +173,9 @@ function renderHeader() {
   const h = $('#hdrRight');
   if (!S.me) { h.innerHTML = ''; return; }
   const switcher = S.me.role === 'client' && S.companies.length > 1
-    ? `<select class="input" id="coSwitch" aria-label="Company" style="width:auto">${S.companies.map((c) => `<option value="${c.id}" ${c.id === S.route.c ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>` : '';
-  h.innerHTML = `${switcher}<span class="who"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? 'Accountant' : 'Client'}</span><button class="btn small" data-act="logout">Sign out</button>`;
+    ? `<select class="input" id="coSwitch" aria-label="Company" style="width:auto">${S.companies.map((c) => `<option value="${c.id}" ${c.id === S.route.c ? 'selected' : ''}>${esc(c.name)}${new Set(S.companies.map((x) => x.firm_name)).size > 1 ? ` (${esc(c.firm_name)})` : ''}</option>`).join('')}</select>` : '';
+  const firm = S.me.role === 'accountant' ? `<button class="btn small" data-act="firm-settings" title="Firm settings">${esc(S.firm)} · ${esc(S.firmInfo?.country || '')}</button>` : '';
+  h.innerHTML = `${switcher}${firm}<span class="who"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? 'Accountant' : 'Client'}</span><button class="btn small" data-act="logout">Sign out</button>`;
   $('#coSwitch')?.addEventListener('change', (e) => go(e.target.value));
 }
 
@@ -254,7 +261,7 @@ function tabs(key, defs) {
 function renderClient() {
   const w = S.ws; if (!w) return;
   const c = w.company;
-  $('#hello').innerHTML = `<div><h1>${esc(c.name)}</h1><p class="sub">Client #${c.no}${c.nif ? ` · NIF ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · Accountant: ${esc(w.firm)}</p></div>
+  $('#hello').innerHTML = `<div><h1>${esc(c.name)}</h1><p class="sub">Client #${c.no}${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · ${esc(COUNTRY(c.country).name)} · Accountant: ${esc(w.firm)}</p></div>
     <span class="private"><i></i>Private workspace. Other clients of ${esc(w.firm)} cannot see it.</span>`;
   const docs = w.items.filter((i) => i.kind === 'doc').sort(newest);
   const inbound = w.items.filter((i) => i.kind !== 'doc').sort(newest);
@@ -328,7 +335,7 @@ function renderAcc() {
       <section><div class="section-h"><h3>Waiting on clients</h3></div>${list(theirs, 'No reports or requests are waiting on clients.', { compact: true, showCompany: true })}</section></div>`;
     else if (t.cur === 'ai') body = aiUsageView();
     else body = `<div class="tbl-wrap"><table><thead><tr><th>No.</th><th>Client</th><th>Not opened by you</th><th>Opened, not confirmed</th><th>Reports you owe</th><th>Waiting on client</th><th>Overdue requests</th><th>Next deadline</th></tr></thead><tbody>${all.map(({ c, k }) =>
-      `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)">${c.nif ? `NIF ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : '<span style="color:var(--muted)">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+      `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)"><span class="mono">${esc(c.country || '')}</span>${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : '<span style="color:var(--muted)">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;
     m.innerHTML = `<div class="ws-h"><div><h1>Good to see you, ${esc(first(S.me.name) || 'there')}</h1><p class="sub" style="margin-top:6px">${esc(S.firm)} · ${o.companies.length} client workspace${o.companies.length === 1 ? '' : 's'}</p></div></div>
       <div class="kpis"><div class="kpi ${sum('stale') ? 'alert' : ''}"><b class="num">${sum('unopened')}</b><span>Documents you have not opened${sum('stale') ? ` · ${sum('stale')} over 48 h` : ''}</span></div>
       <div class="kpi"><b class="num">${sum('unconf')}</b><span>Opened, receipt not confirmed</span></div>
@@ -350,8 +357,8 @@ function renderAcc() {
   const body = t.cur === 'in' ? list(docs, 'This client has not sent any documents yet.')
     : t.cur === 'out' ? list(out, 'You have not sent this client any reports or requests yet.')
       : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
-  m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no}${c.nif ? ` · NIF ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
-    <div class="actions"><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body;
+  m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no} · ${esc(COUNTRY(c.country).name.toUpperCase())}${c.nif ? ` · ${esc(taxLabel(c.country).toUpperCase())} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
+    <div class="actions"><button class="btn" data-act="edit-client">Edit details</button><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body;
 }
 
 /* ---------- AI reading costs ---------- */
@@ -392,7 +399,8 @@ const recFor = (itemId) => S.rec?.extractions.find((e) => e.item_id === itemId);
 const invoiceFor = (itemId) => S.rec?.invoices.find((i) => i.item_id === itemId);
 const matchesForTx = (txId) => (S.rec?.matches || []).filter((m) => m.transaction_id === txId);
 const matchesForInvoice = (itemId) => (S.rec?.matches || []).filter((m) => m.invoice_item_id === itemId);
-const METHOD = { norma43: 'Norma 43 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading' };
+const METHOD = { norma43: 'Norma 43 file', cfonb120: 'CFONB 120 file', mt940: 'MT940 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading',
+  fatturapa: 'FatturaPA e-invoice', ubl: 'UBL e-invoice (XRechnung / PEPPOL)', cii: 'CII e-invoice', facturx: 'Factur-X / ZUGFeRD data inside the PDF' };
 
 function paymentNote(itemId) {
   const ms = matchesForInvoice(itemId);
@@ -448,9 +456,9 @@ function bankView() {
   const count = (k) => r.transactions.filter((t) => status(t) === k).length;
   const stItems = statements.map((e) => { const it = item(e.item_id); return `<div class="ob"><span class="ico sky" aria-hidden="true">BNK</span><span class="rm"><span class="rt"><a href="#/c/${S.route.c}/i/${e.item_id}" style="color:inherit">${esc(it?.title || 'Statement')}</a></span><span class="rs">${e.status === 'done' ? statementSummary(e) : esc(e.error || '')}</span></span><span class="pill ${e.status === 'done' ? 'ok' : 'bad'}">${e.status === 'done' ? 'Read' : 'Not read'}</span></div>`; }).join('');
   const invs = r.invoices.length;
-  return `<p class="note">Bank statements and invoices are read automatically when they are uploaded. Norma 43, camt.053 and CSV files are read exactly; PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; ${S.me.role === 'accountant' ? 'you confirm each match' : 'your accountant confirms each match'}.</p>
+  return `<p class="note">Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; ${S.me.role === 'accountant' ? 'you confirm each match' : 'your accountant confirms each match'}.</p>
     ${r.pending.length ? `<div class="chain"><p>Reading ${r.pending.length} file${r.pending.length > 1 ? 's' : ''}…</p></div>` : ''}
-    <div class="stack" style="gap:10px">${stItems || '<div class="empty">No bank statements read yet. Upload one as “Bank statement”: Norma 43 (AEB 43), camt.053, CSV or PDF.</div>'}</div>
+    <div class="stack" style="gap:10px">${stItems || `<div class="empty">No bank statements read yet. Upload one as “Bank statement”: ${esc(COUNTRY(S.ws?.company.country).bankFormats)}.</div>`}</div>
     <div class="section-h" style="margin-top:22px"><h3>Transactions</h3><div class="presets">
       ${[['all', `All ${r.transactions.length}`], ['none', `No invoice ${count('none')}`], ['suggested', `To confirm ${count('suggested')}`], ['confirmed', `Confirmed ${count('confirmed')}`], ['refs', 'With references']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" data-act="bank-filter" data-f="${k}">${l}</button>`).join('')}
     </div></div>
@@ -491,13 +499,7 @@ function recognisedSection(it) {
 }
 
 /* ---------- recurring deadlines ---------- */
-const PRESETS = [
-  { label: 'Bank statements, monthly by the 5th', kind: 'request', title: 'Bank statements', category: 'Bank statement', frequency: 'monthly', dueDay: 5, leadDays: 7 },
-  { label: 'Sales and purchase invoices, monthly by the 5th', kind: 'request', title: 'Sales and purchase invoices', category: 'Invoice', frequency: 'monthly', dueDay: 5, leadDays: 7 },
-  { label: 'VAT return (Modelo 303), quarterly by the 20th', kind: 'report', title: 'VAT return (Modelo 303)', category: 'Tax return', frequency: 'quarterly', dueDay: 20, leadDays: 10 },
-  { label: 'Withholding tax (Modelo 111), quarterly by the 20th', kind: 'report', title: 'Withholding tax (Modelo 111)', category: 'Tax return', frequency: 'quarterly', dueDay: 20, leadDays: 10 },
-  { label: 'Annual VAT summary (Modelo 390), 30 January', kind: 'report', title: 'Annual VAT summary (Modelo 390)', category: 'Tax return', frequency: 'yearly', dueDay: 30, dueMonth: 1, leadDays: 14 },
-];
+const presets = () => COUNTRY(S.ws?.company.country).presets;
 
 function recurringView() {
   const w = S.ws, acc = S.me.role === 'accountant';
@@ -508,15 +510,17 @@ function recurringView() {
       ${acc && o.active ? `<button class="btn small" data-act="stop-ob" data-id="${o.id}">Stop</button>` : `<span class="pill ${o.active ? 'ok' : 'muted'}">${o.active ? 'Active' : 'Stopped'}</span>`}</div>`;
   }).join('');
   const form = acc ? `<form class="inline-form" id="obForm" novalidate><h3>Add a recurring deadline</h3>
-    <div class="presets">${PRESETS.map((p, i) => `<button type="button" class="chip" data-act="preset" data-i="${i}">${esc(p.label)}</button>`).join('')}</div>
+    <p class="sub" style="font-size:13px">Templates for ${esc(COUNTRY(w.company.country).name)}. Check the dates: they are starting points, and some move with weekends or the company’s situation.</p>
+    <div class="presets">${presets().map((p, i) => `<button type="button" class="chip" data-act="preset" data-i="${i}">${esc(p.label)}</button>`).join('')}</div>
     <div class="grid2"><div class="field"><label for="ob-kind">Who delivers</label><select id="ob-kind" class="input"><option value="request">The client uploads a document</option><option value="report">You send a report</option></select></div>
     <div class="field"><label for="ob-title">Title</label><input id="ob-title" class="input" placeholder="e.g. Bank statements"></div></div>
     <div class="grid2"><div class="field"><label for="ob-cat">Type</label><select id="ob-cat" class="input">${[...new Set([...DOC_TYPES, ...REPORT_TYPES])].map((x) => `<option>${x}</option>`).join('')}</select></div>
-    <div class="field"><label for="ob-freq">How often</label><select id="ob-freq" class="input"><option value="monthly">Every month</option><option value="quarterly">Every quarter (Jan, Apr, Jul, Oct)</option><option value="yearly">Every year</option></select></div></div>
+    <div class="field"><label for="ob-freq">How often</label><select id="ob-freq" class="input"><option value="monthly">Every month</option><option value="quarterly">Every quarter</option><option value="yearly">Every year</option></select></div></div>
     <div class="grid2"><div class="field"><label for="ob-day">Due on day</label><input id="ob-day" class="input" type="number" min="1" max="31" value="5"></div>
-    <div class="field"><label for="ob-month">Month (yearly only)</label><select id="ob-month" class="input">${MONTHS.map((x, i) => `<option value="${i + 1}">${x}</option>`).join('')}</select></div></div>
-    <div class="grid2"><div class="field"><label for="ob-lead">Open it this many days before</label><input id="ob-lead" class="input" type="number" min="0" max="60" value="7"></div>
-    <div class="field"><label for="ob-note">Instructions for the client (optional)</label><input id="ob-note" class="input"></div></div>
+    <div class="field"><label for="ob-offset">Due in (monthly and quarterly)</label><select id="ob-offset" class="input"><option value="1">The month after the period</option><option value="2">The second month after</option><option value="3">The third month after</option></select></div></div>
+    <div class="grid2"><div class="field"><label for="ob-month">Month (yearly only)</label><select id="ob-month" class="input">${MONTHS.map((x, i) => `<option value="${i + 1}">${x}</option>`).join('')}</select></div>
+    <div class="field"><label for="ob-lead">Open it this many days before</label><input id="ob-lead" class="input" type="number" min="0" max="60" value="7"></div></div>
+    <div class="field"><label for="ob-note">Instructions for the client (optional)</label><input id="ob-note" class="input"></div>
     <p class="err" id="obErr" hidden></p><div><button class="btn primary" type="submit">Add recurring deadline</button></div></form>` : '';
   return `<p class="note">Recurring deadlines create a request or an expected report automatically before each due date. Reminders go out if nothing arrives.</p>
     <div class="stack" style="gap:12px">${rows || '<div class="empty">No recurring deadlines yet.</div>'}${form}</div>`;
@@ -550,7 +554,7 @@ function ledgerView() {
   const refs = Object.fromEntries(w.items.map((i) => [i.id, i.ref]));
   return `<div class="section-h"><p class="note" style="margin:0">Every action is written to an append-only log. Each entry carries the hash of the entry before it, so editing or deleting any past entry breaks the chain.</p>
     <div class="tbl-actions"><a class="btn small" href="/api/companies/${c.id}/export.csv">Download CSV</a><a class="btn small" href="/api/companies/${c.id}/report" target="_blank" rel="noopener">Printable report</a></div></div>${bar}
-    <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Time (Madrid)</th><th>Who</th><th>What happened</th><th>Ref</th><th>Entry hash</th></tr></thead><tbody>${evs.map((e) =>
+    <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Time (${esc(cityOfTz())})</th><th>Who</th><th>What happened</th><th>Ref</th><th>Entry hash</th></tr></thead><tbody>${evs.map((e) =>
       `<tr${e.item_id ? ` class="click" data-act="item" data-c="${c.id}" data-id="${e.item_id}"` : ''}><td class="mono">${e.seq}</td><td class="mono num" style="white-space:nowrap">${fmt(e.at)}</td><td><span class="actor ${e.actor_type}">${e.actor_type}</span></td><td style="color:var(--ink);min-width:260px">${esc(e.text)}</td><td class="mono" style="white-space:nowrap">${refs[e.item_id] || ''}</td><td class="mono" style="color:var(--muted)">${e.hash.slice(0, 12)}…</td></tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -653,15 +657,32 @@ function replaceModal(it) {
     <p class="err" id="rvErr" hidden></p><p class="progress" id="rvProg" hidden></p>
     <div class="dr-actions"><button class="btn primary" type="submit" id="rvBtn">Send new version</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
 }
-function clientModal() {
-  openModal(`${modalHead('Add a client')}
-  <form class="modal-b" id="coForm" novalidate>
-    <div class="field"><label for="co-name">Company name</label><input id="co-name" class="input" placeholder="e.g. Sol y Mar Hospitality SL"></div>
-    <div class="grid2"><div class="field"><label for="co-nif">NIF</label><input id="co-nif" class="input" placeholder="B12345678"></div><div class="field"><label for="co-city">City</label><input id="co-city" class="input"></div></div>
-    <h3 style="margin-top:6px">First person to invite (optional)</h3>
-    <div class="grid2"><div class="field"><label for="co-cname">Name</label><input id="co-cname" class="input"></div><div class="field"><label for="co-cemail">Email</label><input id="co-cemail" class="input" type="email"></div></div>
+function clientModal(edit) {
+  const c = edit ? S.ws.company : { country: S.firmInfo?.country || 'ES', name: '', nif: '', city: '' };
+  const k = COUNTRY(c.country);
+  const invite = edit ? '' : `<h3 style="margin-top:6px">First person to invite (optional)</h3>
+    <div class="grid2"><div class="field"><label for="co-cname">Name</label><input id="co-cname" class="input"></div><div class="field"><label for="co-cemail">Email</label><input id="co-cemail" class="input" type="email"></div></div>`;
+  openModal(`${modalHead(edit ? 'Client details' : 'Add a client')}
+  <form class="modal-b" id="${edit ? 'coEdit' : 'coForm'}" novalidate>
+    <div class="field"><label for="co-name">Company name</label><input id="co-name" class="input" value="${esc(c.name)}" placeholder="e.g. Sol y Mar Hospitality SL"></div>
+    <div class="grid2"><div class="field"><label for="co-country">Country</label><select id="co-country" class="input">${countryOptions(c.country)}</select></div>
+    <div class="field"><label for="co-nif" id="co-nif-l">${esc(k.taxIdLabel)}</label><input id="co-nif" class="input" value="${esc(c.nif)}" placeholder="${esc(k.taxIdHint)}"></div></div>
+    <div class="field"><label for="co-city">City</label><input id="co-city" class="input" value="${esc(c.city)}"></div>
+    <p class="sub" style="font-size:13px" id="co-hint">${countryHint(k)}</p>
+    ${invite}
     <p class="err" id="coErr" hidden></p>
-    <div class="dr-actions"><button class="btn primary" type="submit">Create workspace</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
+    <div class="dr-actions"><button class="btn primary" type="submit">${edit ? 'Save' : 'Create workspace'}</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
+}
+const countryHint = (k) => `The country sets the tax ID check, the time zone of deadlines (${esc(k.tz.split('/').pop())}), the deadline templates and the formats read exactly: ${esc(k.bankFormats)}.`;
+
+function firmModal() {
+  openModal(`${modalHead('Firm settings')}
+  <form class="modal-b" id="firmForm" novalidate>
+    <div class="field"><label for="fm-name">Firm name</label><input id="fm-name" class="input" value="${esc(S.firm)}"></div>
+    <div class="field"><label for="fm-country">Country</label><select id="fm-country" class="input">${countryOptions(S.firmInfo?.country)}</select></div>
+    <p class="sub" style="font-size:13px">Clients see the firm name in every email. The country is the default for new clients; each client keeps its own country.</p>
+    <p class="err" id="fmErr" hidden></p>
+    <div class="dr-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
 }
 
 /* ---------- forms ---------- */
@@ -720,9 +741,21 @@ document.addEventListener('submit', async (e) => {
     if (f.id === 'coForm') {
       const name = $('#co-name').value.trim();
       if (!name) return showErr('#coErr', 'Enter the company name.');
-      const r = await api('/companies', { method: 'POST', body: { name, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim(), contactName: $('#co-cname').value.trim(), contactEmail: $('#co-cemail').value.trim() } })
+      const r = await api('/companies', { method: 'POST', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim(), contactName: $('#co-cname').value.trim(), contactEmail: $('#co-cemail').value.trim() } })
         .catch((err) => { showErr('#coErr', err.message); return null; });
       if (r) { closeModal(); toast('Workspace created.'); go(r.id); }
+    }
+    if (f.id === 'coEdit') {
+      const name = $('#co-name').value.trim();
+      if (!name) return showErr('#coErr', 'Enter the company name.');
+      const ok = await api(`/companies/${S.route.c}`, { method: 'PATCH', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim() } })
+        .then(() => true, (err) => { showErr('#coErr', err.message); return false; });
+      if (ok) { closeModal(); toast('Client details saved. The change is in the log.'); await refresh(); }
+    }
+    if (f.id === 'firmForm') {
+      const name = $('#fm-name').value.trim(), country = $('#fm-country').value;
+      const ok = await api('/firm', { method: 'PATCH', body: { name, country } }).then(() => true, (err) => { showErr('#fmErr', err.message); return false; });
+      if (ok) { S.firm = name; S.firmInfo = { ...S.firmInfo, name, country }; closeModal(); toast('Firm details saved.'); renderShell(); await refresh(); }
     }
     if (f.id === 'memberForm') {
       const email = $('#mb-email').value.trim();
@@ -732,7 +765,7 @@ document.addEventListener('submit', async (e) => {
     }
     if (f.id === 'obForm') {
       const body = { kind: $('#ob-kind').value, title: $('#ob-title').value.trim(), category: $('#ob-cat').value, frequency: $('#ob-freq').value,
-        dueDay: Number($('#ob-day').value), dueMonth: Number($('#ob-month').value), leadDays: Number($('#ob-lead').value), note: $('#ob-note').value.trim() };
+        dueDay: Number($('#ob-day').value), dueMonth: Number($('#ob-month').value), monthOffset: Number($('#ob-offset').value), leadDays: Number($('#ob-lead').value), note: $('#ob-note').value.trim() };
       if (!body.title) return showErr('#obErr', 'Enter a title.');
       await api(`/companies/${S.route.c}/obligations`, { method: 'POST', body });
       toast('Recurring deadline added.'); await refresh();
@@ -786,10 +819,14 @@ document.addEventListener('click', async (e) => {
     case 'modal-report': reportModal(); break;
     case 'modal-request': requestModal(); break;
     case 'new-client': clientModal(); break;
+    case 'edit-client': clientModal(true); break;
+    case 'firm-settings': firmModal(); break;
     case 'preset': {
-      const p = PRESETS[+b.dataset.i];
+      const p = presets()[+b.dataset.i];
       $('#ob-kind').value = p.kind; $('#ob-title').value = p.title; $('#ob-cat').value = p.category; $('#ob-freq').value = p.frequency;
-      $('#ob-day').value = p.dueDay; $('#ob-lead').value = p.leadDays; if (p.dueMonth) $('#ob-month').value = p.dueMonth; break;
+      $('#ob-day').value = p.dueDay; $('#ob-lead').value = p.leadDays; $('#ob-offset').value = p.monthOffset || 1; if (p.dueMonth) $('#ob-month').value = p.dueMonth;
+      if (p.note) toast(p.note);
+      break;
     }
     case 'stop-ob': if (confirm('Stop this recurring deadline? Items already created stay.')) await act(`/companies/${S.route.c}/obligations/${b.dataset.id}/stop`, {}, 'Recurring deadline stopped.'); break;
     case 'remove-member':
@@ -804,6 +841,10 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('
 // keep the view current: other people act in the same workspace
 document.addEventListener('change', (e) => {
   if (e.target.id === 'ai-month') { S.aiMonth = e.target.value; S.aiUsage = null; renderData(); }
+  if (e.target.id === 'co-country') {
+    const k = COUNTRY(e.target.value);
+    $('#co-nif-l').textContent = k.taxIdLabel; $('#co-nif').placeholder = k.taxIdHint; $('#co-hint').innerHTML = countryHint(k);
+  }
 });
 window.addEventListener('focus', () => S.me && refresh());
 setInterval(() => { if (S.me && document.visibilityState === 'visible' && $('#modal').hidden) refresh(); }, 30000);
@@ -812,7 +853,8 @@ setInterval(() => { if (S.me && document.visibilityState === 'visible' && $('#mo
 (async () => {
   try {
     const me = await api('/me');
-    S.me = me.user; S.firm = me.firm; S.companies = me.companies;
+    S.me = me.user; S.firm = me.firm; S.companies = me.companies; S.firmInfo = me.firmInfo; S.countries = me.countries || [];
+    if (S.firmInfo) TZ = COUNTRY(S.firmInfo.country).tz;
     renderShell();
     await route();
   } catch (err) {

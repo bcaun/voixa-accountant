@@ -54,6 +54,21 @@ cd /opt/voixa-exchange
 docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js login-link --email ваш@email
 ```
 
+### Ещё одна бухгалтерия (другая фирма, другая страна)
+
+На одном сервере может работать несколько фирм. Бухгалтеры одной фирмы видят только своих клиентов.
+У фирмы есть страна (ES, IT, FR, DE, PT) — она подставляется новым клиентам по умолчанию.
+
+```sh
+cd /opt/voixa-exchange
+docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js create-firm --name "Studio Rossi" --country IT
+docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js create-accountant --firm "Studio Rossi" --email giulia@studiorossi.it --name "Giulia Rossi"
+docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js list-firms
+```
+
+Вторая команда печатает ссылку для входа — её нужно передать бухгалтеру. Если фирм несколько,
+у `create-accountant` обязательно указывать `--firm`.
+
 ## 5. Почта (Postmark)
 
 Пока в `deploy/.env` стоит `MAIL_TRANSPORT=console`, письма (приглашения клиентам, уведомления)

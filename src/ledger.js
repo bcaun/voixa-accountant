@@ -23,6 +23,15 @@ export function eventHash(prev, e) {
 }
 
 /**
+ * Take the company's log lock at the start of a transaction that will append events.
+ * A transaction that first inserts rows referencing the company (which takes a weaker
+ * lock on it) and only then appends would otherwise deadlock with a concurrent upload.
+ */
+export async function lockCompany(client, companyId) {
+  await client.query('select 1 from companies where id = $1 for update', [companyId]);
+}
+
+/**
  * Append one event inside an open transaction. Locks the company row, so
  * concurrent writers to the same company are serialised and the chain never forks.
  */

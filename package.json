@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "migrate": "node src/migrate.js",
+    "create-firm": "node src/cli.js create-firm",
     "create-accountant": "node src/cli.js create-accountant",
     "login-link": "node src/cli.js login-link",
     "test": "node --test --test-concurrency=1 test/*.test.js"

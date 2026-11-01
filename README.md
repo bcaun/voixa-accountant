@@ -40,9 +40,25 @@ nobody can say "I never got it", "you never sent it" or "it went to spam".
 - **AI cost tracking.** Every call to the AI reader stores its token usage and estimated cost (list
   price per model, including fallbacks and cache tokens). Accountants see the cost per client and
   month, per model and per document, can download it as CSV, and can set a monthly budget
-  (`AI_MONTHLY_BUDGET_USD`) after which files are not sent to the AI reader until the next month.
+  (`AI_MONTHLY_BUDGET_USD`, applied to each firm separately) after which that firm's files are not sent to the AI reader until the next month.
   Clients never see these figures.
 - **Passwordless sign-in.** People sign in with a one-time link sent to their email.
+- **Several firms, five countries.** One server hosts any number of accounting firms. Accountants see only
+  their own firm's clients, client numbers count per firm, and emails carry the firm's name. Every client
+  has a country (Spain, Italy, France, Germany or Portugal; the firm's by default) which sets:
+
+  | | Tax ID checked | Deadlines in | Read exactly, without AI |
+  |---|---|---|---|
+  | Spain | NIF / CIF / NIE | Madrid time | Norma 43, camt.053, CSV |
+  | Italy | Partita IVA, Codice Fiscale (check digits) | Rome time | FatturaPA XML, signed `.p7m` too; camt.053, CSV |
+  | France | SIREN, SIRET, TVA (check digits) | Paris time | Factur-X PDF, UBL, CII; CFONB 120, camt.053, CSV |
+  | Germany | USt-IdNr. (check digit), Steuernummer | Berlin time | XRechnung (UBL, CII), ZUGFeRD PDF; MT940, camt.053, CSV |
+  | Portugal | NIF / NIPC (check digit) | Lisbon time | UBL; camt.053, CSV |
+
+  …plus deadline templates (Modelo 303/111/390; F24, CU, 770; CA3, DSN, CA12; UStVA, Lohnsteuer, ZM;
+  IVA periódica, DMR, Modelo 22, IES), bank wording in each language for counterparties and invoice
+  numbers, and the AI reader's instructions. Deadlines can fall one, two or three months after the period
+  (Portugal's VAT return is due on the 20th of the second month).
 
 ## Run it locally
 
@@ -52,7 +68,8 @@ Requirements: Node.js 20+ and PostgreSQL 14+.
 npm install
 cp .env.example .env          # set DATABASE_URL; the defaults print emails to the console
 export $(grep -v '^#' .env | xargs)
-npm run create-accountant -- --email you@voixa.es --name "Your Name"   # prints a sign-in link
+npm run create-firm -- --name "Your Firm" --country ES               # ES, IT, FR, DE or PT
+npm run create-accountant -- --firm "Your Firm" --email you@voixa.es --name "Your Name"   # prints a sign-in link
 npm start                     # http://localhost:3000
 ```
 
@@ -95,8 +112,8 @@ exports, the append-only guard and detection of a tampered log.
   to the Anthropic API; cover this in the client agreement and your data-processing records (GDPR).
   Without a key, Norma 43, camt.053 and CSV statements are still read, and other files are marked as
   not readable with a note explaining what to upload instead.
-- **Accountants** are created from the command line (`npm run create-accountant`). Clients are
-  invited from the app.
+- **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,
+  `list-firms`). Clients are invited from the app. A firm can change its name and default country in the app.
 
 ## Project layout
 
@@ -110,7 +127,9 @@ src/mailer.js        email queue, transports (console, SMTP, Postmark), delivery
 src/scheduler.js     automatic reminders and recurring deadlines
 src/export.js        CSV and printable tracking report
 src/storage.js       file storage (local disk or S3-compatible)
-src/recognition/     statement parsers (Norma 43, camt.053, CSV), AI reader, references, payment matching, AI pricing
+src/countries.js     per-country rules: tax ID checks, time zones, deadline templates
+src/recognition/     statement parsers (Norma 43, CFONB 120, MT940, camt.053, CSV), e-invoices (FatturaPA, UBL, CII,
+                     Factur-X / ZUGFeRD), AI reader, references, payment matching, AI pricing
 src/sql/             database schema
 public/              web client (plain HTML, CSS and JavaScript, no build step)
 test/                end-to-end tests

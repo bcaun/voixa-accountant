@@ -81,7 +81,8 @@ const rec = () => ctx.acc.get(`/companies/${ctx.co}/recognition`);
 const events = async () => (await ctx.acc.get(`/companies/${ctx.co}`)).events;
 
 test('setup: accountant, client company with its NIF, client contact', async () => {
-  const { rows: [acc] } = await pool.query(`insert into users (email, name, role) values ('elena@voixa.es', 'Elena Ruiz', 'accountant') returning *`);
+  const { rows: [acc] } = await pool.query(`with f as (insert into firms (name, country) values ('Voixa Accounting', 'ES') returning id)
+    insert into users (email, name, role, firm_id) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id from f returning *`);
   ctx.accCookie = await signIn(await createLoginLink(acc.id));
   ctx.acc = as(ctx.accCookie);
   ctx.co = (await ctx.acc.post('/companies', { name: 'Sol y Mar Hospitality SL', nif: 'B56781234', contactEmail: 'daniel@solymar.es', contactName: 'Daniel Moreau' }, 201)).id;
@@ -205,7 +206,7 @@ test('files that cannot be read are reported in the log, with what to do instead
   const r = await rec();
   const failed = r.extractions.filter((e) => e.status === 'unsupported' && !/budget/.test(e.error));
   assert.equal(failed.length, 2);
-  assert.ok(failed.some((e) => /Export the statement as CSV, Norma 43/.test(e.error)));
+  assert.ok(failed.some((e) => /Export the statement as CSV/.test(e.error)));
   assert.ok(failed.some((e) => /ANTHROPIC_API_KEY/.test(e.error)));
   assert.equal((await events()).filter((e) => e.type === 'recognition_failed' && !/budget/.test(e.text)).length, 2);
 });

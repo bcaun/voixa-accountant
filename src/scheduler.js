@@ -3,11 +3,13 @@
 // running it at the same time.
 import { config } from './config.js';
 import { pool, tx } from './db.js';
-import { appendEvent } from './ledger.js';
+import { appendEvent, lockCompany } from './ledger.js';
 import { flushEmails } from './mailer.js';
 import { generateDue } from './companies.js';
 import { SYSTEM, notify, recipientSide, recompute, reminderLine } from './items.js';
 import { fmtDay } from './dates.js';
+import { tzOf } from './countries.js';
+import { COMPANY_SQL } from './auth.js';
 import { processJobs } from './recognition/recognize.js';
 
 const LOCK_ID = 774411;
@@ -32,7 +34,7 @@ export async function runScheduler(now = new Date()) {
 }
 
 async function generateObligations(now) {
-  const { rows } = await pool.query('select o.*, row_to_json(c) as company from obligations o join companies c on c.id = o.company_id where o.active');
+  const { rows } = await pool.query(`select o.*, row_to_json(c) as company from obligations o join (${COMPANY_SQL}) c on c.id = o.company_id where o.active`);
   let n = 0;
   for (const o of rows) {
     const made = await tx((c) => generateDue(c, o, o.company, now));
@@ -46,7 +48,7 @@ const H = 36e5;
 async function autoReminders(now) {
   const s = config.scheduler;
   const { rows } = await pool.query(
-    `select i.*, row_to_json(c) as company from items i join companies c on c.id = i.company_id
+    `select i.*, row_to_json(c) as company from items i join (${COMPANY_SQL}) c on c.id = i.company_id
      where i.state in ('sent','opened','expected') and i.auto_reminders < $1`, [s.maxAutoReminders]);
   let n = 0;
   for (const it of rows) {
@@ -67,10 +69,11 @@ async function autoReminders(now) {
     }
     if (!due) continue;
     await tx(async (c) => {
+      await lockCompany(c, it.company_id);
       const { rows: [fresh] } = await c.query('select * from items where id = $1 for update', [it.id]);
       if (fresh.state !== it.state || fresh.auto_reminders !== it.auto_reminders) return;
       const side = toSender ? 'accountant' : recipientSide(it.kind);
-      const line = toSender ? `“${it.title}” is due ${fmtDay(it.due_at)} and has not been sent to ${it.company.name} yet.` : reminderLine(fresh);
+      const line = toSender ? `“${it.title}” is due ${fmtDay(it.due_at, tzOf(it.company.country))} and has not been sent to ${it.company.name} yet.` : reminderLine(fresh, it.company);
       await appendEvent(c, { companyId: it.company_id, itemId: it.id, actor: SYSTEM, type: 'auto_reminder',
         text: `Automatic reminder to the ${side === 'client' ? 'client' : 'accountant'}: ${line}`, data: { side, number: it.auto_reminders + 1 } });
       await notify(c, { company: it.company, item: fresh, side, kind: 'auto_reminder',

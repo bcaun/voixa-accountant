@@ -13,7 +13,7 @@ export const sentMail = []; // filled by the "memory" transport, used in tests
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function renderEmail({ heading, lines = [], button, footer }) {
-  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || `${config.firmName} · Pescada`].join('\n');
+  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || 'Pescada'].join('\n');
   const html = `<!doctype html><html><body style="margin:0;background:#F4F9FA;font-family:'Schibsted Grotesk',Helvetica,Arial,sans-serif;color:#0B2B3F">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F9FA;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #CFE2EC;border-radius:24px">
@@ -22,7 +22,7 @@ export function renderEmail({ heading, lines = [], button, footer }) {
 ${lines.map((l) => `<p style="margin:0 0 10px;font-size:15px;line-height:1.55;color:#23445A">${esc(l)}</p>`).join('')}
 ${button ? `<p style="margin:22px 0 8px"><a href="${esc(button.url)}" style="display:inline-block;background:#1A5DB4;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;padding:13px 26px;border-radius:999px">${esc(button.label)}</a></p>` : ''}
 </td></tr>
-<tr><td style="padding:16px 32px 24px;font-size:12.5px;line-height:1.5;color:#3F6478;border-top:1px solid #CFE2EC">${esc(footer || `${config.firmName} · Pescada. This message and every action on the document are recorded in the workspace log.`)}</td></tr>
+<tr><td style="padding:16px 32px 24px;font-size:12.5px;line-height:1.5;color:#3F6478;border-top:1px solid #CFE2EC">${esc(footer || 'Pescada. This message and every action on the document are recorded in the workspace log.')}</td></tr>
 </table></td></tr></table></body></html>`;
   return { html, text };
 }

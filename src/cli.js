@@ -1,30 +1,71 @@
-// npm run create-accountant -- --email elena@voixa.es --name "Elena Ruiz"
+// npm run create-firm -- --name "Studio Rossi" --country IT
+// npm run create-accountant -- --email elena@voixa.es --name "Elena Ruiz" [--firm "Voixa Accounting"]
 // npm run login-link -- --email elena@voixa.es      (prints a one-time sign-in link)
+// node src/cli.js list-firms
 import { parseArgs } from 'node:util';
 import { pool } from './db.js';
 import { migrate } from './migrate.js';
 import { createLoginLink } from './auth.js';
+import { config } from './config.js';
+import { COUNTRY_CODES, isCountry } from './countries.js';
 
 const [cmd] = process.argv.slice(2);
-const { values } = parseArgs({ args: process.argv.slice(3), options: { email: { type: 'string' }, name: { type: 'string' } } });
+const { values } = parseArgs({ args: process.argv.slice(3), options: {
+  email: { type: 'string' }, name: { type: 'string' }, firm: { type: 'string' }, country: { type: 'string' },
+} });
 const email = (values.email || '').trim().toLowerCase();
+const country = (values.country || '').trim().toUpperCase();
+
+async function findFirm(ref) {
+  const { rows } = await pool.query(
+    `select * from firms where id::text = $1 or lower(name) = lower($1) order by created_at`, [ref]);
+  if (!rows.length) throw new Error(`No firm "${ref}". Create it with: npm run create-firm -- --name "${ref}" --country ES`);
+  return rows[0];
+}
+
+async function createFirm(name, cc) {
+  if (!name) throw new Error('Pass --name');
+  if (!isCountry(cc)) throw new Error(`Pass --country, one of: ${COUNTRY_CODES.join(', ')}`);
+  const { rows: [f] } = await pool.query('insert into firms (name, country) values ($1, $2) returning *', [name, cc]);
+  return f;
+}
 
 try {
   await migrate();
-  if (!email) throw new Error('Pass --email');
-  if (cmd === 'create-accountant') {
-    const { rows: [u] } = await pool.query(
-      `insert into users (email, name, role) values ($1, $2, 'accountant')
-       on conflict (email) do update set name = coalesce(nullif($2, ''), users.name) returning *`, [email, values.name || '']);
-    if (u.role !== 'accountant') throw new Error(`${email} already exists as a client`);
-    console.log(`Accountant ready: ${u.name || u.email}`);
-    console.log(`Sign-in link (valid once): ${await createLoginLink(u.id)}`);
-  } else if (cmd === 'login-link') {
-    const { rows: [u] } = await pool.query('select * from users where email = $1', [email]);
-    if (!u) throw new Error(`No user ${email}`);
-    console.log(await createLoginLink(u.id));
+  if (cmd === 'create-firm') {
+    const f = await createFirm((values.name || '').trim(), country);
+    console.log(`Firm created: ${f.name} (${f.country}), id ${f.id}`);
+    console.log(`Add an accountant: npm run create-accountant -- --firm "${f.name}" --email someone@example.com --name "Their Name"`);
+  } else if (cmd === 'list-firms') {
+    const { rows } = await pool.query(`select f.*, (select count(*) from companies c where c.firm_id = f.id)::int as clients,
+      (select count(*) from users u where u.firm_id = f.id)::int as accountants from firms f order by created_at`);
+    for (const f of rows) console.log(`${f.id}  ${f.country}  ${f.name}  (${f.accountants} accountants, ${f.clients} clients)`);
+    if (!rows.length) console.log('No firms yet.');
   } else {
-    throw new Error('Commands: create-accountant, login-link');
+    if (!email) throw new Error('Pass --email');
+    if (cmd === 'create-accountant') {
+      let firm;
+      if (values.firm) firm = await findFirm(values.firm);
+      else {
+        const { rows } = await pool.query('select * from firms order by created_at');
+        if (rows.length > 1) throw new Error(`There are ${rows.length} firms. Say which one with --firm (see: node src/cli.js list-firms)`);
+        firm = rows[0] || await createFirm(config.firmName, country || 'ES');
+      }
+      const { rows: [existing] } = await pool.query('select * from users where email = $1', [email]);
+      if (existing && existing.role !== 'accountant') throw new Error(`${email} already exists as a client`);
+      if (existing && existing.firm_id && existing.firm_id !== firm.id) throw new Error(`${email} is already an accountant at another firm`);
+      const { rows: [u] } = await pool.query(
+        `insert into users (email, name, role, firm_id) values ($1, $2, 'accountant', $3)
+         on conflict (email) do update set name = coalesce(nullif($2, ''), users.name), firm_id = $3 returning *`, [email, values.name || '', firm.id]);
+      console.log(`Accountant ready: ${u.name || u.email}, ${firm.name} (${firm.country})`);
+      console.log(`Sign-in link (valid once): ${await createLoginLink(u.id)}`);
+    } else if (cmd === 'login-link') {
+      const { rows: [u] } = await pool.query('select * from users where email = $1', [email]);
+      if (!u) throw new Error(`No user ${email}`);
+      console.log(await createLoginLink(u.id));
+    } else {
+      throw new Error('Commands: create-firm, list-firms, create-accountant, login-link');
+    }
   }
 } catch (err) {
   console.error(err.message);

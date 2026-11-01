@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { pool } from './db.js';
+import { config } from './config.js';
 
 const dir = fileURLToPath(new URL('./sql/', import.meta.url));
 
@@ -13,6 +14,8 @@ export async function migrate() {
     const client = await pool.connect();
     try {
       await client.query('begin');
+      // migrations that need settings read them with current_setting('pescada.…')
+      await client.query("select set_config('pescada.firm_name', $1, true)", [config.firmName]);
       await client.query(sql);
       await client.query('insert into schema_migrations (name) values ($1)', [name]);
       await client.query('commit');
