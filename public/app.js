@@ -206,7 +206,7 @@ function renderShell() {
             <div><h2 id="upH">Send documents to ${esc(S.firm)}</h2><p class="sub" style="margin-top:4px">Every file is fingerprinted and tracked until your accountant confirms receipt.</p></div>
             <label class="drop" id="drop" for="up-file"><strong>Drop files here or choose files</strong><span>Invoices, contracts, bank statements, receipts.</span><span class="files" id="dropFiles"></span></label>
             <input type="file" id="up-file" class="sr" multiple>
-            <div class="grid2">
+            <div class="grid2 type-period">
               <div class="field"><label for="up-cat">Document type</label><select id="up-cat" class="input">${DOC_TYPES.map((x) => `<option>${x}</option>`).join('')}</select></div>
               <div class="field"><label for="up-period">Period</label><input id="up-period" class="input" type="month" value="${thisMonth()}"></div>
             </div>
