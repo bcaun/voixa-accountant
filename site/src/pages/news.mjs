@@ -1,5 +1,5 @@
 // News and press releases. Each post is one file in src/news/ exporting `post`:
-// { date: 'YYYY-MM-DD', tag: {en, es}, slug: {en, es}, title: {en, es}, summary: {en, es}, body: {en, es} }.
+// { date: 'YYYY-MM-DD', order?: n (for several posts on one day), tag: {en, es}, slug: {en, es}, title: {en, es}, summary: {en, es}, body: {en, es} }.
 // To publish: add a file, run `node site/build.mjs`, commit, and deploy.
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ const SITE = 'https://pescada.io';
 const dir = fileURLToPath(new URL('../news/', import.meta.url));
 const posts = [];
 for (const f of (await readdir(dir)).filter((f) => f.endsWith('.mjs'))) posts.push((await import(path.join(dir, f))).post);
-posts.sort((a, b) => b.date.localeCompare(a.date));
+posts.sort((a, b) => b.date.localeCompare(a.date) || (b.order || 0) - (a.order || 0)); // same day: higher `order` first
 
 const T = {
   en: { base: '/news/', title: 'News', lead: 'What is new in Pescada: new countries, new features and announcements for accounting firms.',
