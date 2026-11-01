@@ -439,6 +439,6 @@ api.get('/ai-usage.csv', async (req, res) => {
   const lines = [['month', 'client_no', 'client', 'documents', 'ai_calls', 'unsuccessful_calls', 'input_tokens', 'output_tokens', 'cost_usd'].join(',')];
   for (const c of r.companies) lines.push([r.month, c.no, c.name, c.documents, c.calls, c.unsuccessful, c.input_tokens, c.output_tokens, c.cost_usd.toFixed(4)].map(cell).join(','));
   lines.push([r.month, '', 'TOTAL', r.total.documents, r.total.calls, '', r.total.input_tokens, r.total.output_tokens, r.total.cost_usd.toFixed(4)].map(cell).join(','));
-  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="voixa-ai-usage-${r.month}.csv"` });
+  res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="pescada-ai-usage-${r.month}.csv"` });
   res.send('\ufeff' + lines.join('\r\n') + '\r\n');
 });

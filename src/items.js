@@ -8,7 +8,7 @@ import { HttpError, actorOf } from './auth.js';
 import { fmtDay, fmtTime } from './dates.js';
 import { enqueueRecognition } from './recognition/recognize.js';
 
-export const SYSTEM = { type: 'system', id: null, name: 'Voixa Exchange' };
+export const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
 export const recipientSide = (kind) => (kind === 'doc' ? 'accountant' : 'client');
 export const senderSide = (kind) => (kind === 'doc' ? 'client' : 'accountant');
 export const fmtSize = (b) => (b < 1024 ? `${b} B` : b < 1048576 ? `${Math.round(b / 1024)} KB` : `${(b / 1048576).toFixed(1)} MB`);
@@ -70,7 +70,7 @@ export async function notify(c, { company, item, side, kind, subject, heading, l
   const url = `${config.appUrl}/#/c/${company.id}${item ? `/i/${item.id}` : ''}`;
   for (const u of await sideUsers(c, company.id, side)) {
     if (u.id === exceptUserId) continue;
-    const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Voixa Exchange' : 'Open the workspace', url } });
+    const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Pescada' : 'Open the workspace', url } });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });
   }
 }
@@ -136,7 +136,7 @@ export async function createDocument(c, { user, company, file, category, period,
     subject: `New document from ${company.name}: ${it.title}`,
     heading: `${company.name} sent you a document`,
     lines: [`${actorOf(user).name} uploaded “${file.name}” (${fmtSize(file.size)})${request ? ` in response to “${request.title}”` : ''}.`,
-      note ? `Note: ${note}` : 'Open it in Voixa Exchange and confirm receipt.'] });
+      note ? `Note: ${note}` : 'Open it in Pescada and confirm receipt.'] });
   await recompute(c, it.id);
   return it;
 }

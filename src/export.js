@@ -23,7 +23,7 @@ export async function exportCsv(company) {
       e.item_seq ? refOf(company, { seq: e.item_seq }) : '', e.item_title || '', e.text, JSON.stringify(e.data), e.prev_hash, e.hash].map(csvCell).join(','));
   }
   const day = new Date().toISOString().slice(0, 10);
-  return { filename: `voixa-${String(company.no).padStart(3, '0')}-log-${day}.csv`, body: '﻿' + lines.join('\r\n') + '\r\n' };
+  return { filename: `pescada-${String(company.no).padStart(3, '0')}-log-${day}.csv`, body: '﻿' + lines.join('\r\n') + '\r\n' };
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

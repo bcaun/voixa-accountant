@@ -65,7 +65,7 @@ docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js login-
    ```
    MAIL_TRANSPORT=postmark
    POSTMARK_TOKEN=<Server API token>
-   MAIL_FROM=Voixa Exchange <notifications@pescada.io>
+   MAIL_FROM=Pescada <notifications@pescada.io>
    ```
 3. В Postmark → Server → Webhooks добавьте адрес
    `https://app.pescada.io/webhooks/postmark?token=<WEBHOOK_TOKEN из deploy/.env>`

@@ -1,4 +1,4 @@
--- Voixa Exchange: initial schema.
+-- Pescada: initial schema.
 -- The events table is the evidence log. Rows are hash-chained per company and
 -- the trigger at the bottom refuses UPDATE, DELETE and TRUNCATE on it.
 

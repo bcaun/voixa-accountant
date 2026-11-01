@@ -2,7 +2,7 @@
   "name": "voixa-exchange",
   "version": "0.1.0",
   "private": true,
-  "description": "Tracked document exchange between Voixa's accountants and their clients",
+  "description": "Pescada: tracked document exchange between accounting firms and their clients",
   "type": "module",
   "engines": {
     "node": ">=20"

@@ -13,12 +13,12 @@ const UI = {
   en: {
     product: 'Product', security: 'Security', legal: 'Legal', signin: 'Client sign in', demo: 'Request a demo',
     other: 'ES', otherLabel: 'Español', legalNav: 'Legal', draft: `Draft version ${company.legalVersion}, pending review by our lawyers. The final text may change.`,
-    updated: 'Last updated', footer: 'Tracked document exchange for accounting firms.',
+    updated: 'Last updated', singleMember: 'single-member company', footer: 'Tracked document exchange for accounting firms.',
   },
   es: {
     product: 'Producto', security: 'Seguridad', legal: 'Legal', signin: 'Acceso clientes', demo: 'Solicitar una demo',
     other: 'EN', otherLabel: 'English', legalNav: 'Legal', draft: `Versión borrador ${company.legalVersion}, pendiente de revisión por nuestros abogados. El texto final puede cambiar.`,
-    updated: 'Última actualización', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.',
+    updated: 'Última actualización', singleMember: 'sociedad unipersonal', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.',
   },
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -67,7 +67,7 @@ function layout(page, all) {
 </div></header>
 ${legalBody}
 <footer><div class="wrap">
-  <div><b style="color:var(--ink)">${company.product}</b> · ${t.footer}<br>${esc(company.legalName)} · ${esc(company.taxId)} · ${esc(company.address)} · <a href="mailto:${company.contactEmail}">${company.contactEmail}</a></div>
+  <div><b style="color:var(--ink)">${company.product}</b> · ${t.footer}<br>${esc(company.legalName)}${company.singleMember ? ` (${t.singleMember})` : ''} · ${esc(company.taxId)} · ${esc(company.address)} · <a href="mailto:${company.contactEmail}">${company.contactEmail}</a><br><small>${esc(company.registry[page.lang])}</small></div>
   <nav aria-label="${t.legalNav}">${legalPages.map((p) => `<a href="${p.path}">${esc(p.navTitle || p.title)}</a>`).join('')}</nav>
 </div></footer>
 </body>
@@ -77,7 +77,7 @@ ${legalBody}
 
 const LOGO = (await readFile(path.join(here, 'src/logo.svg'), 'utf8')).trim().replace('<svg ', '<svg aria-hidden="true" focusable="false" ');
 // order of the legal pages in menus
-const ORDER = ['privacy', 'terms', 'dpa', 'subprocessors', 'security'];
+const ORDER = ['legal-notice', 'privacy', 'terms', 'dpa', 'subprocessors', 'security'];
 const all = [];
 for (const f of (await readdir(path.join(here, 'src/pages'))).filter((f) => f.endsWith('.mjs')).sort()) {
   const mod = await import(path.join(here, 'src/pages', f));

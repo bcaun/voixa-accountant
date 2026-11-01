@@ -1,6 +1,6 @@
-# Voixa Exchange
+# Pescada
 
-Document exchange between Voixa Accounting and its clients, where every step is recorded:
+Document exchange between an accounting firm and its clients, where every step is recorded:
 who sent what and when, whether the notification email reached the other side, when the
 recipient opened the file, and when they confirmed receipt or approved it. The goal is that
 nobody can say "I never got it", "you never sent it" or "it went to spam".

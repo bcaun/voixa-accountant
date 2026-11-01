@@ -154,7 +154,8 @@ footer a { color: var(--muted); }
 .table table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
 .table th, .table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .table th { font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-.table tr:last-child td { border-bottom: 0; }
+.table tr:last-child td, .table tr:last-child th { border-bottom: 0; }
+.table th[scope="row"] { width: 30%; min-width: 140px; }
 @media (max-width: 860px) { .legal .wrap { grid-template-columns: minmax(0, 1fr); } .legal aside { position: static; display: flex; flex-wrap: wrap; gap: 6px 16px; } }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

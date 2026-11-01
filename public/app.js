@@ -1,4 +1,4 @@
-// Voixa Exchange web client. Plain modules, no build step.
+// Pescada web client. Plain modules, no build step.
 // The server is the source of truth: every action is a request, and the page
 // re-reads the workspace afterwards so what you see is what the log holds.
 
@@ -177,7 +177,7 @@ function renderLogin(sentTo) {
   $('#hdrRight').innerHTML = '';
   $('#view').innerHTML = `<section class="card pad setup" style="max-width:480px;margin:40px auto">${sentTo
     ? `<h1>Check your inbox</h1><p class="sub" style="margin-top:8px">If ${esc(sentTo)} has access, a sign-in link is on its way. It works once and expires in 30 minutes. Check the spam folder if it does not arrive within a few minutes.</p><p style="margin-top:16px"><button class="btn" data-act="login-again">Use another address</button></p>`
-    : `<form id="loginForm" novalidate style="display:grid;gap:14px"><div><h1>Sign in</h1><p class="sub" style="margin-top:6px">Voixa Exchange is where you and ${esc(S.firm || 'Voixa')} send documents, and every step is recorded. Enter your email and we will send you a sign-in link.</p></div>
+    : `<form id="loginForm" novalidate style="display:grid;gap:14px"><div><h1>Sign in</h1><p class="sub" style="margin-top:6px">Pescada is where you and ${esc(S.firm || 'your accountant')} send documents, and every step is recorded. Enter your email and we will send you a sign-in link.</p></div>
       <div class="field"><label for="li-email">Email</label><input id="li-email" class="input" type="email" autocomplete="email" required></div>
       <p class="err" id="liErr" hidden></p><button class="btn primary" type="submit">Email me a sign-in link</button></form>`}</section>`;
   $('#li-email')?.focus();

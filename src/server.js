@@ -67,6 +67,6 @@ export function createApp() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await migrate();
-  createApp().listen(config.port, () => console.log(`Voixa Exchange on ${config.appUrl} (port ${config.port})`));
+  createApp().listen(config.port, () => console.log(`Pescada on ${config.appUrl} (port ${config.port})`));
   startScheduler();
 }

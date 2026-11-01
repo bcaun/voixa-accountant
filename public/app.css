@@ -1,4 +1,4 @@
-/* Voixa Exchange. Brand tokens from the Voixa brand book: sand, sky and fog (logo arcs), night, graphite, blue, gold, paper. */
+/* Pescada web client. Interim colours until the Pescada brand is final. */
 html,body{margin:0}
 img{max-width:100%}
 :root{
@@ -45,7 +45,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line)}
 .top .wrap{display:flex;align-items:center;gap:20px;min-height:64px;flex-wrap:wrap;padding-block:8px}
 .logo{text-decoration:none;display:inline-flex;align-items:center;gap:12px;line-height:0;color:var(--logo)}
-.logo svg{height:26px;width:auto}
+.logo svg{height:25px;width:auto;flex:none}
+.logo .word{font:400 26px/1 var(--f-display);letter-spacing:-.01em;color:var(--ink,currentColor)}
 .logo small{font:500 12px/1 var(--f-body);color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding-left:12px;border-left:1px solid var(--line-2)}
 .persona{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .persona>span{font-size:12px;color:var(--muted)}
@@ -237,15 +238,11 @@ tr.broken td{background:var(--bad-soft)}
 .top .right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)}
 .who i{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
-.logo img{height:26px;width:auto}
-.logo .on-dark{display:none}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .logo .on-light{display:none}:root:not([data-theme="light"]) .logo .on-dark{display:block}}
-:root[data-theme="dark"] .logo .on-light{display:none} :root[data-theme="dark"] .logo .on-dark{display:block}
 .loading{padding:60px 0;text-align:center;color:var(--muted)}
 body.auth{display:grid;place-items:center;min-height:100vh;padding:24px}
 .auth-card{width:min(440px,100%);display:grid;gap:16px}
 .auth-card form{display:grid;gap:12px}
-.auth-logo{height:25px;width:auto}
+.auth-logo{gap:10px}
 .sub{color:var(--muted)}
 .trk li.problem i{background:var(--bad);border-color:var(--bad)}
 .inline-form{display:grid;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}

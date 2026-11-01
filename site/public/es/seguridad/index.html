@@ -21,17 +21,17 @@
   <nav class="nav" aria-label="Main">
       <a class="hide-s" href="/es/#product">Producto</a>
       <a class="hide-s" href="/es/seguridad/">Seguridad</a>
-      <a class="hide-s" href="/es/privacidad/">Legal</a>
+      <a class="hide-s" href="/es/aviso-legal/">Legal</a>
       <a class="lang" href="/security/" hreflang="en" lang="en" title="English">EN</a>
       <a class="btn small" href="https://app.pescada.io">Acceso clientes</a>
     </nav>
 </div></header>
 <main class="legal"><div class="wrap">
-      <aside aria-label="Legal"><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/" aria-current="page">Seguridad</a></aside>
+      <aside aria-label="Legal"><a href="/es/aviso-legal/">Aviso legal</a><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/" aria-current="page">Seguridad</a></aside>
       <article>
         <h1>Seguridad</h1>
-        <p class="meta">Última actualización: 2026-11-01 · v0.9</p>
-        <p class="draft">Versión borrador 0.9, pendiente de revisión por nuestros abogados. El texto final puede cambiar.</p>
+        <p class="meta">Última actualización: 2026-11-01 · v1.0</p>
+        
         
 <p>Estas son las medidas técnicas y organizativas aplicadas actualmente. Esta página es el Anexo 2 de nuestro <a href="/es/dpa/">Contrato de encargo del tratamiento</a>.</p>
 <div class="table"><table><thead><tr><th>Ámbito</th><th>Medida</th></tr></thead><tbody><tr><td>Separación de clientes</td><td>Cada empresa cliente tiene su propio espacio. El acceso se comprueba en cada solicitud y hay pruebas automáticas que verifican que un cliente no puede llegar a los documentos de otro.</td></tr><tr><td>Acceso</td><td>Sin contraseñas: enlaces de un solo uso por correo, válidos 30 minutos. Las sesiones se guardan solo como hash SHA-256. Se rechazan las solicitudes procedentes de otros sitios web.</td></tr><tr><td>Cifrado en tránsito</td><td>HTTPS en todo el servicio, con certificados renovados automáticamente y HSTS.</td></tr><tr><td>Integridad del registro</td><td>Cada acción se escribe en un registro al que solo se pueden añadir entradas. Cada entrada incluye el hash SHA-256 de la anterior, y la base de datos rechaza modificaciones y borrados del registro. Cada archivo recibe una huella SHA-256 al subirse.</td></tr><tr><td>Almacenamiento</td><td>Los documentos se guardan en un almacenamiento de objetos con jurisdicción UE, con un bloqueo de 6 años contra borrado o sobrescritura.</td></tr><tr><td>Copias de seguridad</td><td>Copia diaria de todo el servidor y copia diaria de la base de datos enviada a un segundo proveedor cada 6 horas y conservada 90 días.</td></tr><tr><td>Acceso al servidor</td><td>Solo con claves SSH, acceso por contraseña desactivado; cortafuegos abierto solo para SSH, HTTP y HTTPS; protección contra ataques de fuerza bruta; actualizaciones de seguridad automáticas.</td></tr><tr><td>Secretos</td><td>Las claves y contraseñas están solo en el servidor, nunca en el repositorio de código.</td></tr><tr><td>Supervisión</td><td>Comprobación externa de disponibilidad cada 5 minutos, con alertas.</td></tr></tbody></table></div>
@@ -39,8 +39,8 @@
 <p>Si encuentras un problema de seguridad, escribe a <a href="mailto:hello@pescada.io">hello@pescada.io</a>. Por favor, no hagas pruebas con datos de otros clientes. Respondemos en un plazo de dos días laborables.</p>
       </article></div></main>
 <footer><div class="wrap">
-  <div><b style="color:var(--ink)">Pescada</b> · Intercambio de documentos con trazabilidad para asesorías y despachos contables.<br>Voixa Consultors S.L. · B24744351 · Carrer de Pallars 193, 08005 Barcelona · <a href="mailto:hello@pescada.io">hello@pescada.io</a></div>
-  <nav aria-label="Legal"><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/">Seguridad</a></nav>
+  <div><b style="color:var(--ink)">Pescada</b> · Intercambio de documentos con trazabilidad para asesorías y despachos contables.<br>Voixa Consultors S.L. (sociedad unipersonal) · B24744351 · Carrer de Pallars 193, 08005 Barcelona · <a href="mailto:hello@pescada.io">hello@pescada.io</a><br><small>Inscrita en el Registro Mercantil de Barcelona, Sección 8, Hoja B-645004, Inscripción 1.ª de 13 de noviembre de 2025</small></div>
+  <nav aria-label="Legal"><a href="/es/aviso-legal/">Aviso legal</a><a href="/es/privacidad/">Política de privacidad</a><a href="/es/terminos/">Condiciones de uso</a><a href="/es/dpa/">Encargo del tratamiento</a><a href="/es/subencargados/">Subencargados</a><a href="/es/seguridad/">Seguridad</a></nav>
 </div></footer>
 </body>
 </html>

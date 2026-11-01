@@ -26,7 +26,7 @@ export const config = {
 
   mail: {
     transport: env.MAIL_TRANSPORT || 'console',
-    from: env.MAIL_FROM || 'Voixa Exchange <exchange@voixa.es>',
+    from: env.MAIL_FROM || 'Pescada <notifications@pescada.io>',
     smtpUrl: env.SMTP_URL,
     postmarkToken: env.POSTMARK_TOKEN,
     postmarkStream: env.POSTMARK_STREAM || 'outbound',

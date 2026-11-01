@@ -7,24 +7,24 @@ import { config } from './config.js';
 import { pool, tx } from './db.js';
 import { appendEvent } from './ledger.js';
 
-const SYSTEM = { type: 'system', id: null, name: 'Voixa Exchange' };
+const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
 export const sentMail = []; // filled by the "memory" transport, used in tests
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function renderEmail({ heading, lines = [], button, footer }) {
-  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || `${config.firmName} · Voixa Exchange`].join('\n');
+  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || `${config.firmName} · Pescada`].join('\n');
   const html = `<!doctype html><html><body style="margin:0;background:#F1F5F9;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#3F4A56">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #E1E7EC;border-radius:14px">
-<tr><td style="padding:22px 28px 0"><span style="font:600 13px/1 Helvetica,Arial,sans-serif;letter-spacing:.12em;color:#0F2438">VOIXA</span>
+<tr><td style="padding:22px 28px 0"><span style="font:600 13px/1 Helvetica,Arial,sans-serif;letter-spacing:.12em;color:#0F2438">PESCADA</span>
 <span style="font:500 11px/1 Helvetica,Arial,sans-serif;letter-spacing:.08em;color:#66727F;padding-left:8px">EXCHANGE</span>
 <div style="height:3px;width:56px;background:#E0C19C;border-radius:2px;margin-top:10px"></div></td></tr>
 <tr><td style="padding:18px 28px 8px"><h1 style="margin:0 0 12px;font:500 22px/1.25 Georgia,serif;color:#0F2438">${esc(heading)}</h1>
 ${lines.map((l) => `<p style="margin:0 0 10px;font-size:14px;line-height:1.55">${esc(l)}</p>`).join('')}
 ${button ? `<p style="margin:18px 0 6px"><a href="${esc(button.url)}" style="display:inline-block;background:#0F2438;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:14px;padding:11px 22px;border-radius:999px">${esc(button.label)}</a></p>` : ''}
 </td></tr>
-<tr><td style="padding:14px 28px 22px;font-size:12px;color:#66727F;border-top:1px solid #E1E7EC">${esc(footer || `${config.firmName} · Voixa Exchange. This message and every action on the document are recorded in the workspace log.`)}</td></tr>
+<tr><td style="padding:14px 28px 22px;font-size:12px;color:#66727F;border-top:1px solid #E1E7EC">${esc(footer || `${config.firmName} · Pescada. This message and every action on the document are recorded in the workspace log.`)}</td></tr>
 </table></td></tr></table></body></html>`;
   return { html, text };
 }
