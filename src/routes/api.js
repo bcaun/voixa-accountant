@@ -3,6 +3,8 @@ import { config } from '../config.js';
 import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout } from '../auth.js';
 import { firmEvent } from '../audit.js';
+import { scanStored } from '../antivirus.js';
+import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
 import { flushEmails } from '../mailer.js';
@@ -296,7 +298,7 @@ async function companyState(user, company, { days = 120 } = {}) {
   ]);
   const ids = its.rows.map((i) => i.id);
   const [vers, emails, evs] = await Promise.all([
-    query(`select v.id, v.item_id, v.version, v.file_name, v.mime, v.size, v.sha256, v.uploaded_at, v.replace_reason, u.name as uploaded_by
+    query(`select v.id, v.item_id, v.version, v.file_name, v.mime, v.size, v.sha256, v.uploaded_at, v.replace_reason, v.scan_status, v.scan_signature, u.name as uploaded_by
            from versions v left join users u on u.id = v.uploaded_by where v.item_id = any($1) order by v.version`, [ids]),
     // ordinary notifications, and daily summaries that listed the item
     query(`select item_id, to_email, kind, status, created_at, updated_at from email_messages where item_id = any($1)
@@ -374,11 +376,29 @@ api.post('/companies/:id/obligations/:oid/stop', async (req, res) => {
 
 /* ---------- sending ---------- */
 
+/** Scan every uploaded file; refuse the whole upload if one is infected, and log the attempt. */
+async function screen(user, company, files) {
+  for (const f of files) f.scan = await scanStored(f.key);
+  const bad = files.filter((f) => f.scan.status === 'infected');
+  if (!bad.length) return;
+  await discard(files);
+  await tx(async (c) => {
+    await lockCompany(c, company.id);
+    for (const f of bad) {
+      await appendEvent(c, { companyId: company.id, actor: actorOf(user), type: 'virus_blocked',
+        text: `${actorOf(user).name} tried to upload “${f.name}”, which contains malware (${f.scan.signature}). The file was refused and not stored.`,
+        data: { file: f.name, sha256: f.sha256, signature: f.scan.signature } });
+    }
+  });
+  throw Object.assign(new HttpError(422, `“${bad[0].name}” contains a virus (${bad[0].scan.signature}) and was not accepted. Nothing from this upload was sent. Scan your computer and send a clean copy.`), { code: 'virus' });
+}
+
 api.post('/companies/:id/documents', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
   if (req.user.role !== 'client') throw new HttpError(403, 'Only the client side can send documents.');
   const { fields, files } = await parseUpload(req, `companies/${company.id}`);
   if (!files.length) throw new HttpError(400, 'Choose at least one file to send.');
+  await screen(req.user, company, files);
   const requestId = isUuid(fields.requestId) ? fields.requestId : null;
   try {
     await tx(async (c) => {
@@ -401,6 +421,7 @@ api.post('/companies/:id/reports', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can send reports.');
   const { fields, files } = await parseUpload(req, `companies/${company.id}`, { maxFiles: 1 });
+  await screen(req.user, company, files);
   try {
     if (files.length !== 1) throw new HttpError(400, 'Attach the report file.');
     const expectedItemId = isUuid(fields.itemId) ? fields.itemId : null;
@@ -447,6 +468,7 @@ async function itemFor(user, id, c) {
 api.post('/items/:id/versions', async (req, res) => {
   const { company } = await itemFor(req.user, req.params.id);
   const { fields, files } = await parseUpload(req, `companies/${company.id}`, { maxFiles: 1 });
+  await screen(req.user, company, files);
   try {
     if (files.length !== 1) throw new HttpError(400, 'Attach the new file.');
     await tx(async (c) => {
@@ -473,6 +495,7 @@ api.get('/items/:id/file', async (req, res) => {
     const n = Number(req.query.v) || item.version;
     const { rows: [version] } = await c.query('select * from versions where item_id = $1 and version = $2', [item.id, n]);
     if (!version) throw new HttpError(404, 'That version does not exist.');
+    if (version.scan_status === 'infected') throw new HttpError(410, `This file contains malware (${version.scan_signature}) and cannot be opened. Ask for a clean copy.`);
     await items.logOpen(c, { user: req.user, company, item, version, download });
     return { version };
   });

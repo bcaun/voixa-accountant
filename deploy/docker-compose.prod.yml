@@ -30,8 +30,17 @@ services:
       TRUST_PROXY: "1"
       PORT: "3000"
       STORAGE_DIR: /app/data/files
+      CLAMAV_HOST: clamav
     volumes: [files:/app/data/files]
     expose: ["3000"]
+
+  # Virus scanner. Loads its signatures at start (uses about 1.5 GB of memory) and updates them
+  # every few hours. While it is starting or down, uploads are accepted and scanned later.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes: [clamav:/var/lib/clamav]
+    expose: ["3310"]
 
   caddy:
     image: caddy:2
@@ -94,6 +103,7 @@ services:
         done
 
 volumes:
+  clamav:
   pgdata:
   files:
   backups:

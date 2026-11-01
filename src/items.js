@@ -74,7 +74,7 @@ export async function sideUsers(c, companyId, side) {
 }
 
 // These always go out at once, even to people who chose the daily digest.
-export const URGENT = new Set(['changes', 'auto_reminder', 'reminder', 'email_problem']);
+export const URGENT = new Set(['changes', 'auto_reminder', 'reminder', 'email_problem', 'virus']);
 export const notifyModeOf = (u) => u.notify_mode || (u.role === 'accountant' ? 'digest' : 'instant');
 
 export async function notify(c, { company, item, side, kind, subject, heading, lines, exceptUserId }) {
@@ -110,9 +110,10 @@ async function insertItem(c, f) {
 
 async function insertVersion(c, item, file, user, reason = '') {
   const { rows: [v] } = await c.query(
-    `insert into versions (item_id, version, storage_key, file_name, mime, size, sha256, uploaded_by, replace_reason)
-     values ($1, coalesce((select max(version) from versions where item_id = $1), 0) + 1, $2,$3,$4,$5,$6,$7,$8) returning *`,
-    [item.id, file.key, file.name, file.mime, file.size, file.sha256, user?.id ?? null, reason]);
+    `insert into versions (item_id, version, storage_key, file_name, mime, size, sha256, uploaded_by, replace_reason, scan_status, scan_signature, scanned_at)
+     values ($1, coalesce((select max(version) from versions where item_id = $1), 0) + 1, $2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,
+    [item.id, file.key, file.name, file.mime, file.size, file.sha256, user?.id ?? null, reason,
+      file.scan?.status || 'off', file.scan?.signature || null, ['clean', 'infected'].includes(file.scan?.status) ? new Date() : null]);
   return v;
 }
 

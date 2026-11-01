@@ -647,6 +647,12 @@ async function loadLog(older) {
   renderData();
 }
 
+const scanLine = (v) => ({
+  clean: '<div class="sub" style="font-size:12.5px;color:var(--ok)">Virus scan: clean</div>',
+  pending: '<div class="sub" style="font-size:12.5px">Virus scan: waiting for the scanner</div>',
+  infected: `<div class="err" style="font-size:12.5px">Blocked: contains malware (${esc(v.scan_signature || '')})</div>`,
+}[v.scan_status] || '');
+
 /* ---------- drawer ---------- */
 function renderDrawer() {
   const d = $('#drawer'), sc = $('#scrim');
@@ -697,7 +703,7 @@ function renderDrawer() {
     <dl class="meta">${meta.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}${linked ? `<dt>${it.fulfilled_by ? 'Fulfilled by' : 'Answers request'}</dt><dd><a href="#/c/${w.company.id}/i/${linked.id}" style="color:var(--blue)">${esc(linked.title)}</a></dd>` : ''}</dl>
     ${it.versions.length ? `<section style="display:grid;gap:10px"><h3>Files</h3><ul class="versions">${it.versions.slice().reverse().map((v) => `<li class="${v === cur ? 'cur' : ''}"><div><b style="color:var(--ink)">v${v.version} · ${esc(v.file_name)}</b> · ${fmtSize(v.size)} ${v === cur ? '<span class="pill sent" style="margin-left:6px">Current</span>' : ''}</div>
       <div class="sub">Uploaded ${fmt(v.uploaded_at)}${v.uploaded_by ? ` by ${esc(v.uploaded_by)}` : ''}${v.replace_reason ? `. Reason for replacing: ${esc(v.replace_reason)}` : ''}</div>
-      <div class="mono">SHA-256 ${v.sha256}</div>${v !== cur ? `<div><a href="/api/items/${it.id}/file?v=${v.version}" target="_blank" rel="noopener" style="color:var(--blue)" data-act="opened-file">Open version ${v.version}</a></div>` : ''}</li>`).join('')}</ul></section>` : ''}
+      <div class="mono">SHA-256 ${v.sha256}</div>${scanLine(v)}${v !== cur ? `<div><a href="/api/items/${it.id}/file?v=${v.version}" target="_blank" rel="noopener" style="color:var(--blue)" data-act="opened-file">Open version ${v.version}</a></div>` : ''}</li>`).join('')}</ul></section>` : ''}
     ${recognisedSection(it)}
     ${emails.length ? `<section class="mail"><h3>Email notifications</h3>${emails.map((e) => `<div class="${['bounced', 'spam_complaint', 'failed'].includes(e.status) ? 'bad' : e.status === 'delivered' || e.status === 'opened' ? 'ok' : ''}">${esc(e.to_email)}: ${mailState[e.status] || e.status} · ${fmtShort(e.updated_at)}</div>`).join('')}</section>` : ''}
     <section class="receipt"><div class="section-h" style="margin:0"><h3>Tracking report</h3><a class="btn small" href="/api/companies/${w.company.id}/report?item=${it.id}" target="_blank" rel="noopener">Open printable report</a></div>

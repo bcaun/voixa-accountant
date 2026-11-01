@@ -47,6 +47,13 @@ export const config = {
     monthlyBudgetUsd: num(env.AI_MONTHLY_BUDGET_USD, 0),
   },
 
+  // virus scanning with ClamAV; off when CLAMAV_HOST is not set
+  clamav: {
+    host: env.CLAMAV_HOST || '',
+    port: num(env.CLAMAV_PORT, 3310),
+    timeoutMs: num(env.CLAMAV_TIMEOUT_MS, 60000),
+  },
+
   scheduler: {
     enabled: env.SCHEDULER !== 'off',
     intervalMinutes: num(env.SCHEDULER_INTERVAL_MIN, 10),

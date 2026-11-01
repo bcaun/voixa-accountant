@@ -12,6 +12,7 @@ import { tzOf } from './countries.js';
 import { COMPANY_SQL } from './auth.js';
 import { processJobs } from './recognition/recognize.js';
 import { sendDigests } from './digest.js';
+import { scanningOn, scanStored } from './antivirus.js';
 
 const LOCK_ID = 774411;
 
@@ -24,9 +25,10 @@ export async function runScheduler(now = new Date()) {
       const generated = await generateObligations(now);
       const reminded = await autoReminders(now);
       await processJobs();
+      const rescanned = await rescanPending();
       const digests = await sendDigests(now);
       await flushEmails();
-      return { generated, reminded, digests };
+      return { generated, reminded, digests, rescanned };
     } finally {
       await lockClient.query('select pg_advisory_unlock($1)', [LOCK_ID]);
     }
@@ -46,6 +48,34 @@ async function generateObligations(now) {
 }
 
 const H = 36e5;
+
+/** Files accepted while the virus scanner was down are scanned as soon as it is back. */
+export async function rescanPending() {
+  if (!scanningOn()) return 0;
+  const { rows } = await pool.query(
+    `select v.*, i.company_id from versions v join items i on i.id = v.item_id where v.scan_status = 'pending' order by v.uploaded_at limit 50`);
+  let n = 0;
+  for (const v of rows) {
+    const r = await scanStored(v.storage_key);
+    if (r.status === 'pending') break; // still down: try again on the next run
+    n++;
+    await tx(async (c) => {
+      await lockCompany(c, v.company_id);
+      await c.query('update versions set scan_status = $2, scan_signature = $3, scanned_at = now() where id = $1', [v.id, r.status, r.signature || null]);
+      if (r.status !== 'infected') return;
+      const { rows: [company] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [v.company_id]);
+      const { rows: [item] } = await c.query('select * from items where id = $1', [v.item_id]);
+      await appendEvent(c, { companyId: v.company_id, itemId: v.item_id, versionId: v.id, actor: SYSTEM, type: 'virus_found',
+        text: `The virus scan found malware (${r.signature}) in “${v.file_name}” (version ${v.version}). The file is blocked and cannot be opened.`,
+        data: { signature: r.signature, version: v.version } });
+      for (const side of ['client', 'accountant']) {
+        await notify(c, { company, item, side, kind: 'virus', subject: `Blocked file: ${item.title}`, heading: 'A file was blocked by the virus scan',
+          lines: [`“${v.file_name}” in ${company.name} contains malware (${r.signature}) and has been blocked.`, 'Do not open copies of it you may have downloaded. Ask the sender for a clean copy.'] });
+      }
+    });
+  }
+  return n;
+}
 
 async function autoReminders(now) {
   const s = config.scheduler;
