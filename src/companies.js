@@ -1,4 +1,5 @@
 // Client workspaces, the people in them, and recurring obligations.
+import { checkTrialClients } from './billing.js';
 import { appendEvent } from './ledger.js';
 import { HttpError, actorOf, sendLoginLink, COMPANY_SQL } from './auth.js';
 import { dueAfter, fmtDay } from './dates.js';
@@ -19,6 +20,7 @@ export async function createCompany(c, { user, name, nif, city, country }) {
   if (!name) throw new HttpError(400, 'Enter the company name.');
   const { rows: [firm] } = await c.query('update firms set company_seq = company_seq + 1 where id = $1 returning *', [user.firm_id]);
   if (!firm) throw new HttpError(403, 'Your account is not linked to a firm.');
+  await checkTrialClients(c, firm);
   if (country && !isCountry(country)) throw new HttpError(400, 'Choose the client’s country.');
   const cc = country || firm.country;
   const taxId = validTaxId(cc, nif);

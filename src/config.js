@@ -59,7 +59,13 @@ export const config = {
   },
 
   // self sign-up and billing (Stripe is optional: without a key, sign-up still works and firms stay on trial)
-  signup: { enabled: env.SIGNUP !== 'off', trialDays: num(env.TRIAL_DAYS, 30) },
+  signup: {
+    enabled: env.SIGNUP !== 'off', trialDays: num(env.TRIAL_DAYS, 30),
+    dailyMax: num(env.SIGNUP_DAILY_MAX, 20),            // sign-up requests per day, all together
+    trialMaxClients: num(env.TRIAL_MAX_CLIENTS, 10),    // open clients a trial firm can have
+    trialMaxInvites: num(env.TRIAL_MAX_INVITES, 20),    // invitation emails a trial firm can send per day
+    notifyEmail: env.SIGNUP_NOTIFY_EMAIL || env.DEMO_EMAIL || 'hello@pescada.io',
+  },
   stripe: {
     secretKey: env.STRIPE_SECRET_KEY || '',
     webhookSecret: env.STRIPE_WEBHOOK_SECRET || '',

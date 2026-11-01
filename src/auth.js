@@ -6,6 +6,7 @@ import { query } from './db.js';
 import { sha256 } from './ledger.js';
 import { queueEmail, renderEmail, flushEmails } from './mailer.js';
 import { translator, langFor } from './i18n.js';
+import { confirmSignup, checkTrialInvites } from './billing.js';
 
 const COOKIE = 'vx_session';
 
@@ -17,6 +18,12 @@ export async function createLoginLink(userId, db = { query }) {
 }
 
 export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName, team } = {}) {
+  // invitations count against a trial firm's daily allowance
+  if (invitedBy) {
+    const firmId = team ? user.firm_id
+      : (await client.query('select firm_id from companies where id = $1', [companyId || null])).rows[0]?.firm_id;
+    await checkTrialInvites(client, firmId);
+  }
   const url = await createLoginLink(user.id, client);
   // the person's language, or that of their firm or company
   const { rows: [c] } = await client.query(
@@ -45,8 +52,9 @@ export async function redeemToken(token, meta) {
     `update login_tokens set used_at = now()
      where token_hash = $1 and used_at is null and expires_at > now()
      returning user_id`, [sha256(String(token || ''))]);
-  if (!t) return null;
-  const { rows: [u] } = await query('select * from users where id = $1 and disabled_at is null', [t.user_id]);
+  let u;
+  if (t) ({ rows: [u] } = await query('select * from users where id = $1 and disabled_at is null', [t.user_id]));
+  else u = await confirmSignup(token); // a sign-up link: the firm is created now
   if (!u) return null;
   const sid = randomBytes(32).toString('base64url');
   const days = u.role === 'accountant' ? config.accountantSessionDays : config.sessionDays;

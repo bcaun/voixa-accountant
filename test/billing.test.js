@@ -64,13 +64,13 @@ const stripeEvent = (ev, secret = 'whsec_test') => {
 const ctx = {};
 
 test('a firm signs itself up and gets a trial; the form does not reveal existing addresses', async () => {
-  assert.equal((await post('/signup', { firmName: 'Studio Bianchi', country: 'IT', name: 'Luca Bianchi', email: 'luca@studiobianchi.it' })).status, 200);
+  assert.equal((await post('/signup', { firmName: 'Studio Bianchi', country: 'IT', name: 'Luca Bianchi', email: 'luca@studiobianchi.it', ms: 5000 })).status, 200);
   ctx.acc = await signInFromMail('luca@studiobianchi.it');
   const me = await ctx.acc('GET', '/me');
   assert.equal(me.user.firmRole, 'admin');
   assert.deepEqual([me.firmInfo.name, me.firmInfo.country, me.firmInfo.plan, me.firmInfo.trialDaysLeft], ['Studio Bianchi', 'IT', 'trial', 30]);
-  assert.equal((await post('/signup', { firmName: 'X', country: 'IT', email: 'luca@studiobianchi.it' })).status, 200, 'same answer for a known address');
-  assert.equal((await post('/signup', { firmName: 'X', country: 'XX', email: 'new@x.it' })).status, 400);
+  assert.equal((await post('/signup', { firmName: 'X', country: 'IT', email: 'luca@studiobianchi.it', ms: 5000 })).status, 200, 'same answer for a known address');
+  assert.equal((await post('/signup', { firmName: 'X', country: 'XX', email: 'new@x.it', ms: 5000 })).status, 400);
   ctx.co = (await ctx.acc('POST', '/companies', { name: 'Trattoria Uno', contactEmail: 'uno@example.it' }, 201)).id;
   const { rows: [f] } = await pool.query(`select id from firms where name = 'Studio Bianchi'`);
   ctx.firm = f.id;

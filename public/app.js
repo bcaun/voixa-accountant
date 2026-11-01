@@ -284,16 +284,18 @@ function renderSignup(sentTo) {
   const link = (href, label) => `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
   const pre = { es: 'ES', it: 'IT', fr: 'FR', de: 'DE', pt: 'PT' }[LANG];
   $('#view').innerHTML = `<section class="card pad setup" style="max-width:520px;margin:40px auto">${sentTo
-    ? `<h1>${t('Check your inbox')}</h1><p class="sub" style="margin-top:8px">${t('We sent a sign-in link to {email}. Open it to start. It works once and expires in 30 minutes.', { email: esc(sentTo) })}</p>`
+    ? `<h1>${t('Check your inbox')}</h1><p class="sub" style="margin-top:8px">${t('We sent a link to {email}. Open it to create your firm’s space; it works once and expires in 24 hours. Check the spam folder if it does not arrive within a few minutes.', { email: esc(sentTo) })}</p>`
     : `<form id="signupForm" novalidate style="display:grid;gap:14px"><div><h1>${t('Start your free trial')}</h1><p class="sub" style="margin-top:6px">${t('30 days, no card needed. Set up your firm, invite your clients, and see every document tracked from sent to confirmed.')}</p></div>
       <div class="field"><label for="su-firm">${t('Firm name')}</label><input id="su-firm" class="input" autocomplete="organization"></div>
       <div class="grid2"><div class="field"><label for="su-country">${t('Country')}</label><select id="su-country" class="input">${SIGNUP_COUNTRIES.map((c) => `<option value="${c}" ${c === pre ? 'selected' : ''}>${esc(countryName(c))}</option>`).join('')}</select></div>
       <div class="field"><label for="su-name">${t('Your name')}</label><input id="su-name" class="input" autocomplete="name"></div></div>
       <div class="field"><label for="su-email">${t('Work email')}</label><input id="su-email" class="input" type="email" autocomplete="email"></div>
       <p class="sub" style="font-size:13px">${t('By starting you accept the {terms} and the {dpa}, and have read the {privacy}.', { terms: link('https://pescada.io/terms/', t('Terms')), dpa: link('https://pescada.io/dpa/', t('Data Processing Agreement')), privacy: link('https://pescada.io/privacy/', t('Privacy Policy')) })}</p>
+      <div aria-hidden="true" style="position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden"><label for="su-website">Website</label><input id="su-website" name="website" tabindex="-1" autocomplete="off"></div>
       <p class="err" id="suErr" hidden></p><button class="btn primary" type="submit">${t('Start the trial')}</button>
       <p class="sub" style="font-size:14px">${t('Already using Pescada?')} <button type="button" class="linkbtn" style="font-size:14px" data-act="login-again">${t('Sign in')}</button></p></form>`}</section>`;
   $('#su-firm')?.focus();
+  S.signupStarted = Date.now();
 }
 
 /* ---------- plan and billing ---------- */
@@ -1229,7 +1231,7 @@ document.addEventListener('submit', async (e) => {
       return;
     }
     if (f.id === 'signupForm') {
-      const body = { firmName: $('#su-firm').value.trim(), country: $('#su-country').value, name: $('#su-name').value.trim(), email: $('#su-email').value.trim() };
+      const body = { firmName: $('#su-firm').value.trim(), country: $('#su-country').value, name: $('#su-name').value.trim(), email: $('#su-email').value.trim(), website: $('#su-website').value, ms: Date.now() - (S.signupStarted || Date.now()) };
       if (!body.firmName || !body.email) return showErr('#suErr', t('Enter the firm’s name and your email.'));
       const done = busy(f.querySelector('button[type=submit]'), t('Starting…'));
       try { await api('/signup', { method: 'POST', body }); renderSignup(body.email); } catch (err) { showErr('#suErr', err.message); done(); }

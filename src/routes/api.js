@@ -62,9 +62,10 @@ api.post('/auth/request', json, async (req, res) => {
 
 // a firm signs itself up: a trial firm and its first administrator, signed in by email link
 api.post('/signup', json, async (req, res) => {
-  rateLimit(`signup:${req.ip}`, 5, 60 * 60e3, 'Too many sign-ups from here. Try again later.');
+  rateLimit(`signup:${req.ip}`, 20, 60 * 60e3, 'Too many sign-ups from here. Try again later.');
   const b = req.body || {};
-  await signUp({ firmName: str(b.firmName, 200), country: b.country, name: str(b.name, 200), email: str(b.email, 200) });
+  await signUp({ firmName: str(b.firmName, 200), country: b.country, name: str(b.name, 200), email: str(b.email, 200),
+    website: str(b.website, 200), ms: Number(b.ms), ip: req.ip });
   flushEmails().catch((err) => console.error('mail', err));
   res.json({ ok: true });
 });

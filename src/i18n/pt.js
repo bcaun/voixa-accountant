@@ -1,5 +1,8 @@
 // European Portuguese email texts (keys are the English originals).
 export default {
+  'Confirm your email to start with Pescada': 'Confirme o seu email para começar no Pescada',
+  'Use the button below to create the {firm} space on Pescada and sign in. The link works once and expires in 24 hours.': 'Use o botão abaixo para criar o espaço de {firm} no Pescada e entrar. A ligação funciona uma vez e expira em 24 horas.',
+  'Confirm and sign in': 'Confirmar e entrar',
   'A file was blocked by the virus scan': 'O antivírus bloqueou um ficheiro',
   'A new version of “{title}” was sent': 'Foi enviada uma nova versão de «{title}»',
   'A report is due soon': 'Um relatório está prestes a vencer',

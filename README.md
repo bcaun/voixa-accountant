@@ -123,6 +123,9 @@ exports, the append-only guard and detection of a tampered log.
   `/webhooks/postmark-inbound?token=<WEBHOOK_TOKEN>`; mail must pass SPF or DKIM.
 - **Billing:** `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` (webhook `/webhooks/stripe`),
   `STRIPE_QUANTITY=clients|firm`; `SIGNUP=off` disables self-signup, `TRIAL_DAYS` sets the trial.
+  Sign-up creates nothing until the emailed link is opened; a hidden field, a minimum fill time, a list of
+  throwaway mail domains and per-IP/per-address limits stop robots. `SIGNUP_DAILY_MAX` (20) caps requests per day,
+  `TRIAL_MAX_CLIENTS` (10) and `TRIAL_MAX_INVITES` (20 a day) limit trial firms, and `SIGNUP_NOTIFY_EMAIL` is told of each new firm.
 - **Bank feeds:** `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`, `BANK_FEED_SYNC_HOURS` (default 12).
 - **Closing clients:** `CLOSE_EXPORT_DAYS` (30) export window, then blocked; purged after `RETENTION_YEARS` (6).
 - **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,

@@ -551,7 +551,7 @@ export default {
   'Waiting for you': 'En attente de votre part',
   'Waiting on client': 'En attente du client',
   'Waiting on clients': 'En attente des clients',
-  'We sent a sign-in link to {email}. Open it to start. It works once and expires in 30 minutes.': 'Nous avons envoyé un lien de connexion à {email}. Ouvrez-le pour commencer. Il ne fonctionne qu’une fois et expire au bout de 30 minutes.',
+  "We sent a link to {email}. Open it to create your firm’s space; it works once and expires in 24 hours. Check the spam folder if it does not arrive within a few minutes.": "Nous avons envoyé un lien à {email}. Ouvrez-le pour créer l’espace de votre cabinet ; il fonctionne une seule fois et expire dans 24 heures. S’il n’arrive pas d’ici quelques minutes, vérifiez vos courriers indésirables.",
   'What': 'Quoi',
   'What do you need?': 'De quoi avez-vous besoin ?',
   'What happened': 'Ce qui s’est passé',

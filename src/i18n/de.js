@@ -1,5 +1,8 @@
 // German email texts (keys are the English originals).
 export default {
+  'Confirm your email to start with Pescada': 'Bestätigen Sie Ihre E-Mail, um mit Pescada zu starten',
+  'Use the button below to create the {firm} space on Pescada and sign in. The link works once and expires in 24 hours.': 'Mit der Schaltfläche unten legen Sie den Bereich von {firm} auf Pescada an und melden sich an. Der Link funktioniert einmal und läuft in 24 Stunden ab.',
+  'Confirm and sign in': 'Bestätigen und anmelden',
   'A file was blocked by the virus scan': 'Der Virenscan hat eine Datei blockiert',
   'A new version of “{title}” was sent': 'Eine neue Version von „{title}“ wurde gesendet',
   'A report is due soon': 'Ein Bericht ist bald fällig',
