@@ -127,9 +127,9 @@ export async function companyFor(user, companyId, db) {
   const q = db || { query };
   const lock = db ? ' for update of c' : '';
   const { rows: [c] } = user.role === 'accountant'
-    ? await q.query(`${COMPANY_SQL} where c.id = $1 and accountant_sees(c.id, $2)${lock}`, [companyId, user.id])
+    ? await q.query(`${COMPANY_SQL} where c.id = $1 and accountant_sees(c.id, $2) and c.blocked_at is null${lock}`, [companyId, user.id])
     : await q.query(`${COMPANY_SQL} join memberships m on m.company_id = c.id
-                      where c.id = $1 and m.user_id = $2 and m.removed_at is null${lock}`, [companyId, user.id]);
+                      where c.id = $1 and m.user_id = $2 and m.removed_at is null and c.closed_at is null${lock}`, [companyId, user.id]);
   if (!c) throw new HttpError(404, 'Workspace not found.');
   return c;
 }

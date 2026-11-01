@@ -503,7 +503,7 @@ function renderRail() {
   $('#clList').innerHTML = `<button class="cl" data-act="client" data-id="" aria-current="${!S.route.c}"><span class="no">ALL</span><span class="nm"><b>All clients</b><span>Work queue and deadlines</span></span><span></span></button>` +
     shown.map((c) => {
       const k = countsFor(c.id), n = k.unopened + k.overdue;
-      return `<button class="cl" data-act="client" data-id="${c.id}" aria-current="${S.route.c === c.id}"><span class="no">#${c.no}</span><span class="nm"><b>${esc(c.name)}</b><span>${c.members} ${c.members === 1 ? 'person' : 'people'}</span></span>${n ? `<span class="badge ${k.stale || k.overdue ? 'bad' : 'warn'}" title="${k.unopened} not opened, ${k.overdue} overdue">${n}</span>` : '<span></span>'}</button>`;
+      return `<button class="cl" data-act="client" data-id="${c.id}" aria-current="${S.route.c === c.id}"><span class="no">#${c.no}</span><span class="nm"><b>${esc(c.name)}</b><span>${c.closed_at ? 'Closed' : `${c.members} ${c.members === 1 ? 'person' : 'people'}`}</span></span>${n ? `<span class="badge ${k.stale || k.overdue ? 'bad' : 'warn'}" title="${k.unopened} not opened, ${k.overdue} overdue">${n}</span>` : '<span></span>'}</button>`;
     }).join('');
 }
 
@@ -550,7 +550,11 @@ function renderAcc() {
       : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
   const more = t.cur === 'in' || t.cur === 'out' ? olderNote() : '';
   m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no} · ${esc(COUNTRY(c.country).name.toUpperCase())}${c.nif ? ` · ${esc(taxLabel(c.country).toUpperCase())} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
-    <div class="actions"><button class="btn" data-act="edit-client">Edit details</button><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body + more;
+    ${c.closed_at ? '' : `<div class="actions"><button class="btn" data-act="edit-client">Edit details</button><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div>`}</div>`
+    + (c.closed_at ? `<div class="chain bad" style="margin-bottom:16px"><div><p>Closed on ${fmtDate(c.closed_at)}. The client no longer has access and nothing can be added.</p>
+      <small>You can export everything until ${fmtDate(c.export_until)}. After that the workspace is blocked, and deleted after ${fmtDate(c.purge_after)} when the retention period ends.</small></div>
+      <div class="tbl-actions"><a class="btn small" href="/api/companies/${c.id}/export-all">Download everything (ZIP)</a>${isAdmin() ? '<button class="btn small" data-act="reopen-client">Reopen</button>' : ''}</div></div>` : '')
+    + t.html + body + more;
 }
 
 /* ---------- AI reading costs ---------- */
@@ -892,7 +896,19 @@ function clientModal(edit) {
     <p class="sub" style="font-size:13px" id="co-hint">${countryHint(k)}</p>
     ${invite}
     <p class="err" id="coErr" hidden></p>
-    <div class="dr-actions"><button class="btn primary" type="submit">${edit ? 'Save' : 'Create workspace'}</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
+    <div class="dr-actions"><button class="btn primary" type="submit">${edit ? 'Save' : 'Create workspace'}</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>
+    ${edit && isAdmin() ? `<div class="modal-b" style="border-top:1px solid var(--line)"><h3>Close this client</h3>
+      <p class="sub" style="font-size:13.5px">At the end of the contract: the client’s people lose access at once and are told by email. You can still read and export everything for 30 days, and reopen it in that time. After that the workspace is blocked, and it is deleted once the legal retention period of its documents is over.</p>
+      <div><button class="btn" type="button" data-act="close-client">Close this client…</button></div></div>` : ''}`);
+}
+function closeClientModal() {
+  const c = S.ws.company;
+  openModal(`${modalHead(`Close ${c.name}`)}<form class="modal-b" id="closeForm" novalidate>
+    <p>The people of ${esc(c.name)} lose access now. Nothing can be added any more. You can export everything for 30 days.</p>
+    <div class="field"><label for="cl-reason">Reason (kept in the log, optional)</label><input id="cl-reason" class="input" placeholder="e.g. Contract ended on 31 December"></div>
+    <div class="field"><label for="cl-confirm">Type the client’s name to confirm: <b>${esc(c.name)}</b></label><input id="cl-confirm" class="input" autocomplete="off"></div>
+    <p class="err" id="closeErr" hidden></p>
+    <div class="dr-actions"><button class="btn primary" type="submit">Close the client</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
 }
 const countryHint = (k) => `The country sets the tax ID check, the time zone of deadlines (${esc(k.tz.split('/').pop())}), the deadline templates and the formats read exactly: ${esc(k.bankFormats)}.`;
 
@@ -1030,6 +1046,12 @@ document.addEventListener('submit', async (e) => {
       if (ok) { Object.assign(S.me, body); closeModal(); toast('Saved.'); renderHeader(); }
       return;
     }
+    if (f.id === 'closeForm') {
+      const ok = await api(`/companies/${S.route.c}/close`, { method: 'POST', body: { confirm: $('#cl-confirm').value.trim(), reason: $('#cl-reason').value.trim() } })
+        .then(() => true, (err) => { showErr('#closeErr', err.message); return false; });
+      if (ok) { closeModal(); toast('Client closed. Their access has ended.'); await refresh(); }
+      return;
+    }
     if (f.id === 'inviteForm') {
       const body = { name: $('#iv-name').value.trim(), email: $('#iv-email').value.trim(), ...memberValues('iv') };
       const ok = await api('/firm/team', { method: 'POST', body }).then(() => true, (err) => { showErr('#ivErr', err.message); return false; });
@@ -1133,6 +1155,8 @@ document.addEventListener('click', async (e) => {
     case 'search-docs': searchModal($('#cl-search')?.value || ''); break;
     case 'tips-done': try { localStorage.setItem(`pescada.tips.${b.dataset.id}`, '1'); } catch { /* private mode */ } $('#tips')?.remove(); break;
     case 'copy': try { await navigator.clipboard.writeText(b.dataset.text); toast('Copied.'); } catch { toast(b.dataset.text); } break;
+    case 'close-client': closeClientModal(); break;
+    case 'reopen-client': if (confirm('Reopen this client? Their people can sign in again.')) await act(`/companies/${S.route.c}/reopen`, {}, 'Client reopened.'); break;
     case 'member-edit': memberModal(S.team.find((m) => m.id === b.dataset.id)); break;
     case 'member-toggle': {
       const off = b.dataset.off === '1';

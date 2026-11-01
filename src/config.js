@@ -17,6 +17,9 @@ export const config = {
   alertEmail: env.ALERT_EMAIL || '',
   loginLinkMinutes: num(env.LOGIN_LINK_MINUTES, 30),
   maxUploadMb: num(env.MAX_UPLOAD_MB, 25),
+  // closing a client: days the firm can still export, and years documents are kept after upload
+  closeExportDays: num(env.CLOSE_EXPORT_DAYS, 30),
+  retentionYears: num(env.RETENTION_YEARS, 6),
 
   storage: {
     driver: env.STORAGE_DRIVER || 'fs',

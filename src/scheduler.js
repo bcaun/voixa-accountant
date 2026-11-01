@@ -13,6 +13,7 @@ import { COMPANY_SQL } from './auth.js';
 import { processJobs } from './recognition/recognize.js';
 import { sendDigests } from './digest.js';
 import { scanningOn, scanStored } from './antivirus.js';
+import { runClosures } from './closure.js';
 
 const LOCK_ID = 774411;
 
@@ -26,9 +27,10 @@ export async function runScheduler(now = new Date()) {
       const reminded = await autoReminders(now);
       await processJobs();
       const rescanned = await rescanPending();
+      const closures = await runClosures(now);
       const digests = await sendDigests(now);
       await flushEmails();
-      return { generated, reminded, digests, rescanned };
+      return { generated, reminded, digests, rescanned, closures };
     } finally {
       await lockClient.query('select pg_advisory_unlock($1)', [LOCK_ID]);
     }

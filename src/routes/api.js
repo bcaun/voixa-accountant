@@ -6,6 +6,7 @@ import { firmEvent } from '../audit.js';
 import { scanStored } from '../antivirus.js';
 import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
+import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
@@ -71,6 +72,18 @@ api.use((req, _res, next) => {
   next();
 });
 
+// A closed client is read-only: nothing can be added or changed, only exported (or the client reopened).
+api.use(async (req, _res, next) => {
+  if (req.method === 'GET') return next();
+  const m = /^\/(companies|items)\/([0-9a-f-]{36})(\/[^?]*)?$/i.exec(req.path);
+  if (!m || m[3] === '/reopen') return next();
+  const { rows: [c] } = m[1] === 'companies'
+    ? await query('select closed_at from companies where id = $1', [m[2]])
+    : await query('select co.closed_at from items i join companies co on co.id = i.company_id where i.id = $1', [m[2]]);
+  if (c?.closed_at) throw new HttpError(409, 'This client is closed. Its workspace can only be exported, or reopened by an administrator.');
+  next();
+});
+
 /* ---------- who am I ---------- */
 
 api.get('/me', async (req, res) => {
@@ -79,10 +92,10 @@ api.get('/me', async (req, res) => {
     return res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, mfa: { enabled: true, pending: true } }, firm: '', companies: [], countries: publicCountries() });
   }
   const { rows } = u.role === 'accountant'
-    ? await query('select id, no, name, nif, city, country from companies where firm_id = $1 and accountant_sees(id, $2) order by no', [u.firm_id, u.id])
+    ? await query('select id, no, name, nif, city, country, closed_at, export_until from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [u.firm_id, u.id])
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
-                   where m.user_id = $1 and m.removed_at is null order by f.name, c.no`, [u.id]);
+                   where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
   const firm = u.firm_id ? (await query('select id, name, country, require_mfa from firms where id = $1', [u.firm_id])).rows[0] : null;
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
@@ -300,11 +313,11 @@ api.get('/overview', async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
   const firmId = req.user.firm_id;
   const uid = req.user.id;
-  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at from companies where firm_id = $1 and accountant_sees(id, $2) order by no', [firmId, uid]);
+  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at, closed_at, export_until from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [firmId, uid]);
   const { rows: open } = await query(
     `select i.id, i.company_id, i.seq, i.kind, i.title, i.category, i.period, i.due_at, i.state, i.version,
             i.sent_at, i.version_at, i.opened_at, i.done_at, i.reminders, c.no, c.name as company_name, c.country
-     from items i join companies c on c.id = i.company_id where c.firm_id = $1 and accountant_sees(c.id, $2) and i.state <> 'done' order by i.version_at nulls last`, [firmId, uid]);
+     from items i join companies c on c.id = i.company_id where c.firm_id = $1 and accountant_sees(c.id, $2) and c.closed_at is null and i.state <> 'done' order by i.version_at nulls last`, [firmId, uid]);
   const { rows: members } = await query(
     `select m.company_id, count(*)::int as n from memberships m join companies c on c.id = m.company_id
      where m.removed_at is null and c.firm_id = $1 and accountant_sees(c.id, $2) group by m.company_id`, [firmId, uid]);
@@ -398,7 +411,8 @@ async function companyState(user, company, { days = 120 } = {}) {
   const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
-      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: inboundAddress(company) },
+      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at ? null : inboundAddress(company),
+      closed_at: company.closed_at, export_until: company.export_until, purge_after: company.purge_after },
     firm: company.firm_name,
     seq: Number(company.head_seq),
     window: { days, shown: its.rows.length, total: counts.rows[0].n },
@@ -597,6 +611,38 @@ api.get('/items/:id/file', async (req, res) => {
   });
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+});
+
+/* ---------- closing a client ---------- */
+
+api.post('/companies/:id/close', json, async (req, res) => {
+  await tx(async (c) => {
+    const company = await companyFor(req.user, req.params.id, c);
+    if (req.user.role !== 'accountant') throw new HttpError(403, 'Only the firm can close a workspace.');
+    if (str(req.body?.confirm, 200) !== company.name) throw new HttpError(400, 'Type the client’s name exactly to confirm.');
+    await closeCompany(c, { user: req.user, company, reason: str(req.body?.reason, 300) });
+  });
+  flushEmails().catch((err) => console.error('mail', err));
+  res.json({ ok: true });
+});
+api.post('/companies/:id/reopen', async (req, res) => {
+  await tx(async (c) => {
+    const company = await companyFor(req.user, req.params.id, c);
+    if (req.user.role !== 'accountant') throw new HttpError(403, 'Only the firm can reopen a workspace.');
+    await reopenCompany(c, { user: req.user, company });
+  });
+  res.json({ ok: true });
+});
+api.get('/companies/:id/export-all', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only the firm can export a whole workspace.');
+  const zip = await exportEverything(company, req.user);
+  await tx(async (c) => {
+    await lockCompany(c, company.id);
+    await appendEvent(c, { companyId: company.id, actor: actorOf(req.user), type: 'exported', text: `${actorOf(req.user).name} downloaded a full export of the workspace (all files, log and report)` });
+  });
+  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="pescada-${String(company.no).padStart(3, '0')}-full-export.zip"`, 'Cache-Control': 'private, no-store' });
+  res.send(zip);
 });
 
 /* ---------- several items at once ---------- */
