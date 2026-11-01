@@ -64,7 +64,7 @@ const upload = (fields, name, content, type = 'application/octet-stream') => {
 };
 async function accountant(email, name, firm, country) {
   const { rows: [f] } = await pool.query('insert into firms (name, country) values ($1, $2) returning id', [firm, country]);
-  const { rows: [u] } = await pool.query(`insert into users (email, name, role, firm_id) values ($1, $2, 'accountant', $3) returning id`, [email, name, f.id]);
+  const { rows: [u] } = await pool.query(`insert into users (email, name, role, firm_id, notify_mode) values ($1, $2, 'accountant', $3, 'instant') returning id`, [email, name, f.id]);
   return as(await signIn(await createLoginLink(u.id)));
 }
 async function clientOf(email) {

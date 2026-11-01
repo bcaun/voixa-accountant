@@ -61,8 +61,27 @@ api.get('/me', async (req, res) => {
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null order by f.name, c.no`, [u.id]);
   const firm = u.firm_id ? (await query('select id, name, country from firms where id = $1', [u.firm_id])).rows[0] : null;
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role }, firm: firm?.name || rows[0]?.firm_name || '',
+  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour }, firm: firm?.name || rows[0]?.firm_name || '',
     firmInfo: firm, countries: publicCountries(), companies: rows });
+});
+
+/* ---------- my settings ---------- */
+
+api.patch('/me', json, async (req, res) => {
+  const b = req.body || {};
+  const sets = [], vals = [req.user.id];
+  if (b.name !== undefined) { const n = str(b.name, 200); if (!n) throw new HttpError(400, 'Enter your name.'); vals.push(n); sets.push(`name = $${vals.length}`); }
+  if (b.notifyMode !== undefined) {
+    if (!['instant', 'digest'].includes(b.notifyMode)) throw new HttpError(400, 'Choose instant emails or a daily summary.');
+    vals.push(b.notifyMode); sets.push(`notify_mode = $${vals.length}`);
+  }
+  if (b.digestHour !== undefined) {
+    const h = Number(b.digestHour);
+    if (!Number.isInteger(h) || h < 0 || h > 23) throw new HttpError(400, 'Choose an hour between 0 and 23.');
+    vals.push(h); sets.push(`digest_hour = $${vals.length}`);
+  }
+  if (sets.length) await query(`update users set ${sets.join(', ')} where id = $1`, vals);
+  res.json({ ok: true });
 });
 
 /* ---------- the accountant's firm ---------- */

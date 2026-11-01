@@ -67,7 +67,7 @@ const ctx = {};
 
 test('accountant signs in and creates a client workspace with an invite', async () => {
   const { rows: [acc] } = await pool.query(`with f as (insert into firms (name, country) values ('Voixa Accounting', 'ES') returning id)
-    insert into users (email, name, role, firm_id) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id from f returning *`);
+    insert into users (email, name, role, firm_id, notify_mode) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id, 'instant' from f returning *`);
   ctx.acc = client(await signIn(await createLoginLink(acc.id)));
   const me = await ctx.acc.get('/me');
   assert.equal(me.user.role, 'accountant');

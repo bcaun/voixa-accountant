@@ -65,18 +65,28 @@ export async function sideUsers(c, companyId, side) {
   if (side === 'accountant') {
     // the accountants of the firm the client belongs to, and no one else
     return (await c.query(
-      `select u.id, u.email, u.name from users u join companies co on co.firm_id = u.firm_id
+      `select u.id, u.email, u.name, u.role, u.notify_mode from users u join companies co on co.firm_id = u.firm_id
        where co.id = $1 and u.role = 'accountant' and u.disabled_at is null`, [companyId])).rows;
   }
   return (await c.query(
-    `select u.id, u.email, u.name from memberships m join users u on u.id = m.user_id
+    `select u.id, u.email, u.name, u.role, u.notify_mode from memberships m join users u on u.id = m.user_id
      where m.company_id = $1 and m.removed_at is null and u.disabled_at is null`, [companyId])).rows;
 }
+
+// These always go out at once, even to people who chose the daily digest.
+export const URGENT = new Set(['changes', 'auto_reminder', 'reminder', 'email_problem']);
+export const notifyModeOf = (u) => u.notify_mode || (u.role === 'accountant' ? 'digest' : 'instant');
 
 export async function notify(c, { company, item, side, kind, subject, heading, lines, exceptUserId }) {
   const url = `${config.appUrl}/#/c/${company.id}${item ? `/i/${item.id}` : ''}`;
   for (const u of await sideUsers(c, company.id, side)) {
     if (u.id === exceptUserId) continue;
+    if (notifyModeOf(u) === 'digest' && !URGENT.has(kind)) {
+      // collected for the daily digest; the item shows as notified when the digest is sent
+      await c.query('insert into digest_entries (user_id, company_id, item_id, kind, subject, line) values ($1,$2,$3,$4,$5,$6)',
+        [u.id, company.id, item?.id ?? null, kind, subject, lines[0] || heading]);
+      continue;
+    }
     const { html, text } = renderEmail({ heading, lines, button: { label: item ? 'Open in Pescada' : 'Open the workspace', url },
       footer: `${company.firm_name} · Pescada. This message and every action on the document are recorded in the workspace log.` });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });

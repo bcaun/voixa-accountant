@@ -11,6 +11,7 @@ import { fmtDay } from './dates.js';
 import { tzOf } from './countries.js';
 import { COMPANY_SQL } from './auth.js';
 import { processJobs } from './recognition/recognize.js';
+import { sendDigests } from './digest.js';
 
 const LOCK_ID = 774411;
 
@@ -23,8 +24,9 @@ export async function runScheduler(now = new Date()) {
       const generated = await generateObligations(now);
       const reminded = await autoReminders(now);
       await processJobs();
+      const digests = await sendDigests(now);
       await flushEmails();
-      return { generated, reminded };
+      return { generated, reminded, digests };
     } finally {
       await lockClient.query('select pg_advisory_unlock($1)', [LOCK_ID]);
     }

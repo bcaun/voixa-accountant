@@ -82,7 +82,7 @@ const events = async () => (await ctx.acc.get(`/companies/${ctx.co}`)).events;
 
 test('setup: accountant, client company with its NIF, client contact', async () => {
   const { rows: [acc] } = await pool.query(`with f as (insert into firms (name, country) values ('Voixa Accounting', 'ES') returning id)
-    insert into users (email, name, role, firm_id) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id from f returning *`);
+    insert into users (email, name, role, firm_id, notify_mode) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id, 'instant' from f returning *`);
   ctx.accCookie = await signIn(await createLoginLink(acc.id));
   ctx.acc = as(ctx.accCookie);
   ctx.co = (await ctx.acc.post('/companies', { name: 'Sol y Mar Hospitality SL', nif: 'B56781234', contactEmail: 'daniel@solymar.es', contactName: 'Daniel Moreau' }, 201)).id;

@@ -5,7 +5,7 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
 import { pool, tx } from './db.js';
-import { appendEvent } from './ledger.js';
+import { appendEvent, lockCompany } from './ledger.js';
 
 const SYSTEM = { type: 'system', id: null, name: 'Pescada' };
 export const sentMail = []; // filled by the "memory" transport, used in tests
@@ -64,9 +64,24 @@ async function deliver(m) {
   throw new Error(`unknown MAIL_TRANSPORT ${t}`);
 }
 
-async function logEmailEvent(client, m, type, text, data = {}) {
-  if (!m.company_id) return;
-  await appendEvent(client, { companyId: m.company_id, itemId: m.item_id, actor: SYSTEM, type, text, data: { to: m.to_email, kind: m.kind, email_id: m.id, ...data } });
+/**
+ * Write an email's fate into the log of every item it was about: one item for an ordinary
+ * notification, all the listed items for a daily digest. With `once`, only the first time.
+ */
+async function logEmailEvent(client, m, type, text, data = {}, { once = false } = {}) {
+  const targets = m.company_id ? [{ company_id: m.company_id, item_id: m.item_id }]
+    : m.kind === 'digest' ? (await client.query('select company_id, item_id from email_items where email_id = $1 order by company_id, item_id', [m.id])).rows : [];
+  // lock the companies in a fixed order so two digests cannot deadlock
+  for (const id of [...new Set(targets.map((t) => t.company_id))].sort()) await lockCompany(client, id);
+  for (const t of targets) {
+    if (once) {
+      const { rows } = await client.query(`select 1 from events where company_id = $1 and type = $2 and data->>'email_id' = $3
+        and item_id is not distinct from $4 limit 1`, [t.company_id, type, m.id, t.item_id]);
+      if (rows.length) continue;
+    }
+    await appendEvent(client, { companyId: t.company_id, itemId: t.item_id, actor: SYSTEM, type,
+      text: m.kind === 'digest' ? `${text} (daily summary)` : text, data: { to: m.to_email, kind: m.kind, email_id: m.id, ...data } });
+  }
 }
 
 let flushing = null;
@@ -122,14 +137,9 @@ export async function handlePostmarkWebhook(p) {
   return tx(async (c) => {
     const { rows: [m] } = await c.query('select * from email_messages where id = $1 for update', [emailId]);
     if (!m) return false;
-    if (status === 'opened') {
-      // log only the first open of each message
-      const { rows } = await c.query(`select 1 from events where company_id = $1 and type = 'email_opened' and data->>'email_id' = $2 limit 1`, [m.company_id, m.id]);
-      if (rows.length) return true;
-    } else {
-      await c.query('update email_messages set status = $2, updated_at = now() where id = $1', [m.id, status]);
-    }
-    await logEmailEvent(c, m, type, text(m, p), { email_id: m.id, provider_id: p.MessageID ?? null });
+    if (status !== 'opened') await c.query('update email_messages set status = $2, updated_at = now() where id = $1', [m.id, status]);
+    // only the first open of each message is logged
+    await logEmailEvent(c, m, type, text(m, p), { email_id: m.id, provider_id: p.MessageID ?? null }, { once: status === 'opened' });
     return true;
   });
 }
