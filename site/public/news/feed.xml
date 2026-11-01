@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Pescada — News</title>
+    <link>https://pescada.io/news/</link>
+    <atom:link href="https://pescada.io/news/feed.xml" rel="self" type="application/rss+xml"/>
+    <description>News and press releases about Pescada, tracked document exchange for accounting firms.</description>
+    <language>en</language>
+    <item>
+      <title>Pescada now works in Italy, France, Germany and Portugal</title>
+      <link>https://pescada.io/news/italy-france-germany-portugal/</link>
+      <guid isPermaLink="true">https://pescada.io/news/italy-france-germany-portugal/</guid>
+      <pubDate>Sun, 01 Nov 2026 09:00:00 GMT</pubDate>
+      <description>Accounting firms in five countries can now run their client document exchange on Pescada. Each client follows its own country’s tax IDs, deadlines and e-invoice formats, and national e-invoices and bank files are read exactly, without AI.</description>
+    </item>
+  </channel>
+</rss>

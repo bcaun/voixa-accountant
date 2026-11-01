@@ -1,5 +1,6 @@
 // Builds the static site into site/public. Run: node site/build.mjs
-// Pages live in src/pages/*.mjs; each exports an array of { key, lang, path, title, description, body, legal }.
+// Pages live in src/pages/*.mjs; each exports an array of { key, lang, path, title, description, body, head?, type? }
+// and may export `files` ([{ path, content }]) for extra outputs such as RSS feeds. News posts live in src/news/.
 import { readdir, readFile, mkdir, writeFile, copyFile, cp, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -11,12 +12,12 @@ const SITE = 'https://pescada.io';
 
 const UI = {
   en: {
-    product: 'Product', security: 'Security', legal: 'Legal', signin: 'Client sign in', demo: 'Request a demo',
+    product: 'Product', security: 'Security', legal: 'Legal', news: 'News', signin: 'Client sign in', demo: 'Request a demo',
     other: 'ES', otherLabel: 'Español', legalNav: 'Legal', draft: `Draft version ${company.legalVersion}, pending review by our lawyers. The final text may change.`,
     updated: 'Last updated', operated: 'Operated by', singleMember: 'single-member company', footer: 'Tracked document exchange for accounting firms.',
   },
   es: {
-    product: 'Producto', security: 'Seguridad', legal: 'Legal', signin: 'Acceso clientes', demo: 'Solicitar una demo',
+    product: 'Producto', security: 'Seguridad', legal: 'Legal', news: 'Noticias', signin: 'Acceso clientes', demo: 'Solicitar una demo',
     other: 'EN', otherLabel: 'English', legalNav: 'Legal', draft: `Versión borrador ${company.legalVersion}, pendiente de revisión por nuestros abogados. El texto final puede cambiar.`,
     updated: 'Última actualización', operated: 'Un servicio de', singleMember: 'sociedad unipersonal', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.',
   },
@@ -27,10 +28,12 @@ function layout(page, all) {
   const t = UI[page.lang];
   const alt = all.find((p) => p.key === page.key && p.lang !== page.lang);
   const home = all.find((p) => p.key === 'home' && p.lang === page.lang).path;
+  const newsHome = all.find((p) => p.key === 'news' && p.lang === page.lang).path;
   const legalPages = all.filter((p) => ORDER.includes(p.key) && p.lang === page.lang).sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
   const nav = `<nav class="nav" aria-label="Main">
       <a class="hide-s" href="${home}#product">${t.product}</a>
       <a class="hide-s" href="${all.find((p) => p.key === 'security' && p.lang === page.lang).path}">${t.security}</a>
+      <a class="hide-s" href="${newsHome}">${t.news}</a>
       <a class="hide-s" href="${legalPages[0].path}">${t.legal}</a>
       <a class="lang" href="${alt.path}" hreflang="${alt.lang}" lang="${alt.lang}" title="${t.otherLabel}">${t.other}</a>
     </nav>
@@ -57,6 +60,8 @@ function layout(page, all) {
 <meta property="og:title" content="${esc(page.title)}">
 <meta property="og:description" content="${esc(page.description)}">
 <meta property="og:url" content="${SITE}${page.path}">
+<meta property="og:type" content="${page.type || 'website'}">
+<meta property="og:site_name" content="${company.product}">${page.head || ''}
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -69,7 +74,7 @@ ${legalBody}
 <footer><div class="wrap">
   <a class="brand" href="${home}" aria-label="${company.product}">${LOGO}<span aria-hidden="true">pescada</span></a>
   <div class="who">${t.footer}<br>${t.operated} ${esc(company.legalName)}${company.singleMember ? ` (${t.singleMember})` : ''} · ${esc(company.taxId)} · ${esc(company.address)} · <a href="mailto:${company.contactEmail}">${company.contactEmail}</a><small>${esc(company.registry[page.lang])}</small></div>
-  <nav aria-label="${t.legalNav}">${legalPages.map((p) => `<a href="${p.path}">${esc(p.navTitle || p.title)}</a>`).join('')}<a href="${alt.path}" hreflang="${alt.lang}" lang="${alt.lang}">${t.otherLabel}</a></nav>
+  <nav aria-label="${t.legalNav}"><a href="${newsHome}">${t.news}</a>${legalPages.map((p) => `<a href="${p.path}">${esc(p.navTitle || p.title)}</a>`).join('')}<a href="${alt.path}" hreflang="${alt.lang}" lang="${alt.lang}">${t.otherLabel}</a></nav>
 </div></footer>
 </body>
 </html>
@@ -80,9 +85,11 @@ const LOGO = (await readFile(path.join(here, 'src/logo.svg'), 'utf8')).trim().re
 // order of the legal pages in menus
 const ORDER = ['legal-notice', 'privacy', 'terms', 'dpa', 'subprocessors', 'security'];
 const all = [];
+const files = [];
 for (const f of (await readdir(path.join(here, 'src/pages'))).filter((f) => f.endsWith('.mjs')).sort()) {
   const mod = await import(path.join(here, 'src/pages', f));
   all.push(...mod.pages);
+  files.push(...(mod.files || []));
 }
 // every page needs its counterpart in the other language
 for (const p of all) if (!all.some((q) => q.key === p.key && q.lang !== p.lang)) throw new Error(`${p.path} has no translation`);
@@ -102,6 +109,10 @@ await rm(path.join(app, 'fonts'), { recursive: true, force: true });
 await cp(path.join(here, 'src/fonts'), path.join(app, 'fonts'), { recursive: true });
 await copyFile(path.join(here, 'src/favicon.svg'), path.join(out, 'favicon.svg'));
 await cp(path.join(here, 'src/fonts'), path.join(out, 'fonts'), { recursive: true });
+for (const f of files) {
+  await mkdir(path.dirname(path.join(out, f.path)), { recursive: true });
+  await writeFile(path.join(out, f.path), f.content);
+}
 await writeFile(path.join(out, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
 await writeFile(path.join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${all.map((p) => `  <url><loc>${SITE}${p.path}</loc></url>`).join('\n')}\n</urlset>\n`);
 console.log(`built ${all.length} pages into ${path.relative(process.cwd(), out) || out}`);

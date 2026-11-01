@@ -147,3 +147,12 @@ node site/build.mjs     # writes site/public, which Caddy serves on pescada.io
 
 The build also copies the brand fonts (`site/src/fonts`, `site/src/fonts.css`) into `public/` so the app
 and the site use the same files. Colours, type and components follow the Pescada brand kit v1.0.
+
+### Publishing news
+
+News and press releases live in `site/src/news/`, one file per post, in English and Spanish. Copy an
+existing post, change `date`, `slug`, `title`, `summary` and `body`, then rebuild and commit:
+
+```sh
+node site/build.mjs     # adds the post to /news/ and /es/noticias/, the RSS feeds and the sitemap
+```

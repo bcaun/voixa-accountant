@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Pescada — Noticias</title>
+    <link>https://pescada.io/es/noticias/</link>
+    <atom:link href="https://pescada.io/es/noticias/feed.xml" rel="self" type="application/rss+xml"/>
+    <description>Noticias y notas de prensa sobre Pescada, intercambio de documentos con trazabilidad para asesorías.</description>
+    <language>es</language>
+    <item>
+      <title>Pescada ya funciona en Italia, Francia, Alemania y Portugal</title>
+      <link>https://pescada.io/es/noticias/italia-francia-alemania-portugal/</link>
+      <guid isPermaLink="true">https://pescada.io/es/noticias/italia-francia-alemania-portugal/</guid>
+      <pubDate>Sun, 01 Nov 2026 09:00:00 GMT</pubDate>
+      <description>Las asesorías de cinco países ya pueden gestionar con Pescada el intercambio de documentos con sus clientes. Cada cliente sigue los NIF, plazos y formatos de factura electrónica de su país, y las facturas electrónicas y ficheros bancarios nacionales se leen de forma exacta, sin IA.</description>
+    </item>
+  </channel>
+</rss>
