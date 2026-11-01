@@ -654,6 +654,7 @@ function bankView() {
   const invs = r.invoices.length;
   return `<p class="note">Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; ${S.me.role === 'accountant' ? 'you confirm each match' : 'your accountant confirms each match'}.</p>
     ${r.pending.length ? `<div class="chain"><p>Reading ${r.pending.length} file${r.pending.length > 1 ? 's' : ''}…</p></div>` : ''}
+    ${S.me.role === 'accountant' ? '<div style="margin-bottom:12px"><button class="btn small" data-act="acc-export">Export for accounting software</button></div>' : ''}
     <div class="stack" style="gap:10px">${stItems || `<div class="empty">No bank statements read yet. Upload one as “Bank statement”: ${esc(COUNTRY(S.ws?.company.country).bankFormats)}.</div>`}</div>
     <div class="section-h" style="margin-top:22px"><h3>Transactions</h3><div class="presets">
       ${[['all', `All ${r.transactions.length}`], ['none', `No invoice ${count('none')}`], ['suggested', `To confirm ${count('suggested')}`], ['confirmed', `Confirmed ${count('confirmed')}`], ['refs', 'With references']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" data-act="bank-filter" data-f="${k}">${l}</button>`).join('')}
@@ -901,6 +902,26 @@ function clientModal(edit) {
       <p class="sub" style="font-size:13.5px">At the end of the contract: the client’s people lose access at once and are told by email. You can still read and export everything for 30 days, and reopen it in that time. After that the workspace is blocked, and it is deleted once the legal retention period of its documents is over.</p>
       <div><button class="btn" type="button" data-act="close-client">Close this client…</button></div></div>` : ''}`);
 }
+function exportModal() {
+  const c = S.ws.company, de = c.country === 'DE';
+  const y = new Date().getFullYear();
+  openModal(`${modalHead('Export for accounting software')}<form class="modal-b" id="expForm" novalidate>
+    <div class="field"><label for="ex-kind">What</label><select id="ex-kind" class="input">
+      <option value="invoices">Invoice register: every invoice read, with its confirmed payment</option>
+      <option value="bank">Bank movements, with the invoice each one pays</option>
+      ${de ? '<option value="datev">DATEV booking batch (Buchungsstapel), beta</option>' : ''}</select></div>
+    <div class="grid2"><div class="field"><label for="ex-from">From</label><input id="ex-from" class="input" type="date" value="${y}-01-01"></div>
+    <div class="field"><label for="ex-to">To</label><input id="ex-to" class="input" type="date" value="${y}-12-31"></div></div>
+    ${de ? `<div id="ex-datev" hidden><div class="grid2"><div class="field"><label for="ex-cons">Beraternummer</label><input id="ex-cons" class="input" inputmode="numeric"></div>
+      <div class="field"><label for="ex-client">Mandantennummer</label><input id="ex-client" class="input" inputmode="numeric" value="${c.no}"></div></div>
+      <div class="grid2"><div class="field"><label for="ex-bank">Bank account (SKR03 1200)</label><input id="ex-bank" class="input" value="1200"></div>
+      <div class="field"><label for="ex-len">Account length</label><input id="ex-len" class="input" type="number" min="4" max="8" value="4"></div></div>
+      <div class="grid2"><div class="field"><label for="ex-deb">Debtors (money in)</label><input id="ex-deb" class="input" value="10000"></div>
+      <div class="field"><label for="ex-cred">Creditors (money out)</label><input id="ex-cred" class="input" value="70000"></div></div>
+      <p class="sub" style="font-size:13px">One booking per confirmed payment, bank account against the debtor or creditor account, invoice number as Belegfeld 1. Try it on a test client in DATEV first.</p></div>` : ''}
+    <p class="sub" style="font-size:13px">The CSV uses ${esc(COUNTRY(c.country).name)} conventions (semicolons, decimal commas) and opens in a spreadsheet or in the import tool of A3, Sage, TeamSystem, Cegid, PHC and others. The export is recorded in the log.</p>
+    <div class="dr-actions"><button class="btn primary" type="submit">Download</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
+}
 function closeClientModal() {
   const c = S.ws.company;
   openModal(`${modalHead(`Close ${c.name}`)}<form class="modal-b" id="closeForm" novalidate>
@@ -1046,6 +1067,12 @@ document.addEventListener('submit', async (e) => {
       if (ok) { Object.assign(S.me, body); closeModal(); toast('Saved.'); renderHeader(); }
       return;
     }
+    if (f.id === 'expForm') {
+      const p = new URLSearchParams({ kind: $('#ex-kind').value, from: $('#ex-from').value, to: $('#ex-to').value });
+      if (p.get('kind') === 'datev') for (const [k, id] of [['consultant', 'ex-cons'], ['client', 'ex-client'], ['bank', 'ex-bank'], ['accountLength', 'ex-len'], ['debtor', 'ex-deb'], ['creditor', 'ex-cred']]) p.set(k, $(`#${id}`).value);
+      const a = document.createElement('a'); a.href = `/api/companies/${S.route.c}/accounting-export?${p}`; document.body.append(a); a.click(); a.remove();
+      closeModal(); return;
+    }
     if (f.id === 'closeForm') {
       const ok = await api(`/companies/${S.route.c}/close`, { method: 'POST', body: { confirm: $('#cl-confirm').value.trim(), reason: $('#cl-reason').value.trim() } })
         .then(() => true, (err) => { showErr('#closeErr', err.message); return false; });
@@ -1156,6 +1183,7 @@ document.addEventListener('click', async (e) => {
     case 'tips-done': try { localStorage.setItem(`pescada.tips.${b.dataset.id}`, '1'); } catch { /* private mode */ } $('#tips')?.remove(); break;
     case 'copy': try { await navigator.clipboard.writeText(b.dataset.text); toast('Copied.'); } catch { toast(b.dataset.text); } break;
     case 'close-client': closeClientModal(); break;
+    case 'acc-export': exportModal(); break;
     case 'reopen-client': if (confirm('Reopen this client? Their people can sign in again.')) await act(`/companies/${S.route.c}/reopen`, {}, 'Client reopened.'); break;
     case 'member-edit': memberModal(S.team.find((m) => m.id === b.dataset.id)); break;
     case 'member-toggle': {
@@ -1202,6 +1230,7 @@ document.addEventListener('change', (e) => {
   if (e.target.dataset?.sel) { const f = filtState(e.target.dataset.sel); if (e.target.checked) f.picked.add(e.target.value); else f.picked.delete(e.target.value); redrawList(e.target.dataset.sel); return; }
   if (e.target.id === 'up-cam') { photosToPdf([...e.target.files]); return; }
   if (e.target.id === 'ai-month') { S.aiMonth = e.target.value; S.aiUsage = null; renderData(); }
+  if (e.target.id === 'ex-kind') { const d = $('#ex-datev'); if (d) d.hidden = e.target.value !== 'datev'; }
   if (e.target.dataset?.toggle) { const box = $(`#${e.target.dataset.toggle}`); if (box) box.hidden = e.target.value === '1'; }
   if (e.target.id === 'co-country') {
     const k = COUNTRY(e.target.value);

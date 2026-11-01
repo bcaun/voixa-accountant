@@ -7,6 +7,7 @@ import { scanStored } from '../antivirus.js';
 import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
+import { accountingExport, exportKinds } from '../exports.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
@@ -643,6 +644,24 @@ api.get('/companies/:id/export-all', async (req, res) => {
   });
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="pescada-${String(company.no).padStart(3, '0')}-full-export.zip"`, 'Cache-Control': 'private, no-store' });
   res.send(zip);
+});
+
+/* ---------- exports for accounting software ---------- */
+
+api.get('/companies/:id/accounting-export', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can export for accounting software.');
+  const kind = String(req.query.kind || '');
+  if (!exportKinds(company.country).includes(kind)) throw new HttpError(400, `Choose one of: ${exportKinds(company.country).join(', ')}.`);
+  const d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+  const out = await accountingExport(company, { kind, from: d(req.query.from), to: d(req.query.to), lang: req.query.lang,
+    datev: { consultant: req.query.consultant, client: req.query.client, bank: req.query.bank, debtor: req.query.debtor, creditor: req.query.creditor, accountLength: req.query.accountLength } });
+  await tx(async (c) => {
+    await lockCompany(c, company.id);
+    await appendEvent(c, { companyId: company.id, actor: actorOf(req.user), type: 'exported', text: `${actorOf(req.user).name} exported ${kind === 'datev' ? 'a DATEV booking batch' : kind === 'bank' ? 'the bank movements' : 'the invoice register'} for accounting software` });
+  });
+  res.set({ 'Content-Type': out.type, 'Content-Disposition': `attachment; filename="${out.filename}"`, 'Cache-Control': 'private, no-store' });
+  res.send(out.body);
 });
 
 /* ---------- several items at once ---------- */
