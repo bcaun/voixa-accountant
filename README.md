@@ -115,3 +115,13 @@ src/sql/             database schema
 public/              web client (plain HTML, CSS and JavaScript, no build step)
 test/                end-to-end tests
 ```
+
+## Product website (pescada.io)
+
+`site/` holds the marketing site and the public legal pages (privacy policy, terms, data processing
+agreement, sub-processors, security) in English and Spanish. Edit the sources in `site/src/`, company
+details in `site/src/company.mjs`, then rebuild and commit the output:
+
+```sh
+node site/build.mjs     # writes site/public, which Caddy serves on pescada.io
+```

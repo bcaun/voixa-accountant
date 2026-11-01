@@ -40,8 +40,10 @@ services:
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       DOMAIN: ${DOMAIN}
+      SITE_DOMAIN: ${SITE_DOMAIN:-pescada.io}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../site/public:/srv/site:ro
       - caddy_data:/data
       - caddy_config:/config
 

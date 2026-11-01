@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Security · Pescada</title>
+<meta name="description" content="How Pescada protects documents and keeps a record that cannot be altered.">
+<link rel="canonical" href="https://pescada.io/security/">
+<link rel="alternate" hreflang="en" href="https://pescada.io/security/">
+<link rel="alternate" hreflang="es" href="https://pescada.io/es/seguridad/">
+<link rel="alternate" hreflang="x-default" href="https://pescada.io/security/">
+<meta property="og:title" content="Security">
+<meta property="og:description" content="How Pescada protects documents and keeps a record that cannot be altered.">
+<meta property="og:url" content="https://pescada.io/security/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/" aria-label="Pescada"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20c7-10 19-13 31-9 5 2 9 5 11 9-2 4-6 7-11 9-12 4-24 1-31-9z" stroke="currentColor" stroke-width="4"/><path d="M48 20l6-7m-6 7l6 7" stroke="currentColor" stroke-width="4"/><path d="M17 20l5 5 10-11" stroke="#E0A82E" stroke-width="4"/></svg><span>pescada</span></a>
+  <nav class="nav" aria-label="Main">
+      <a class="hide-s" href="/#product">Product</a>
+      <a class="hide-s" href="/security/">Security</a>
+      <a class="hide-s" href="/privacy/">Legal</a>
+      <a class="lang" href="/es/seguridad/" hreflang="es" lang="es" title="Español">ES</a>
+      <a class="btn small" href="https://app.pescada.io">Client sign in</a>
+    </nav>
+</div></header>
+<main class="legal"><div class="wrap">
+      <aside aria-label="Legal"><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="/dpa/">Data Processing Agreement</a><a href="/subprocessors/">Sub-processors</a><a href="/security/" aria-current="page">Security</a></aside>
+      <article>
+        <h1>Security</h1>
+        <p class="meta">Last updated: 2026-11-01 · v0.9</p>
+        <p class="draft">Draft version 0.9, pending review by our lawyers. The final text may change.</p>
+        
+<p>These are the technical and organisational measures in place today. This page is Annex 2 of our <a href="/dpa/">Data Processing Agreement</a>.</p>
+<div class="table"><table><thead><tr><th>Area</th><th>Measure</th></tr></thead><tbody><tr><td>Separation of customers and clients</td><td>Every client company has its own workspace. Access is checked on every request, and automated tests confirm that one client cannot reach another’s documents.</td></tr><tr><td>Sign-in</td><td>No passwords: single-use email links valid for 30 minutes. Sessions are stored only as SHA-256 hashes. Requests from other websites are refused.</td></tr><tr><td>Encryption in transit</td><td>HTTPS everywhere, with automatically renewed certificates and HSTS.</td></tr><tr><td>Integrity of the record</td><td>Every action is written to an append-only log. Each entry includes the SHA-256 hash of the previous one, and the database refuses edits and deletions of the log. Every file gets a SHA-256 fingerprint on upload.</td></tr><tr><td>Storage</td><td>Documents are kept in EU-jurisdiction object storage with a 6-year lock against deletion or overwrite.</td></tr><tr><td>Backups</td><td>Daily backup of the whole server, and a daily database copy sent to a second provider every 6 hours and kept 90 days.</td></tr><tr><td>Server access</td><td>SSH keys only, password login disabled; firewall open only for SSH, HTTP and HTTPS; brute-force protection; automatic security updates.</td></tr><tr><td>Secrets</td><td>Keys and passwords live only on the server, never in the code repository.</td></tr><tr><td>Monitoring</td><td>External availability check every 5 minutes, with alerts.</td></tr></tbody></table></div>
+<h2>Reporting a vulnerability</h2>
+<p>If you find a security problem, write to <a href="mailto:hello@pescada.io">hello@pescada.io</a>. Please do not test against other customers’ data. We reply within two working days.</p>
+      </article></div></main>
+<footer><div class="wrap">
+  <div><b style="color:var(--ink)">Pescada</b> · Tracked document exchange for accounting firms.<br>[Legal name] · [CIF] · [Registered address], Spain · <a href="mailto:hello@pescada.io">hello@pescada.io</a></div>
+  <nav aria-label="Legal"><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="/dpa/">Data Processing Agreement</a><a href="/subprocessors/">Sub-processors</a><a href="/security/">Security</a></nav>
+</div></footer>
+</body>
+</html>

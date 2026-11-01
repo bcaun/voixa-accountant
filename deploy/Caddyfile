@@ -9,3 +9,26 @@
 	}
 	reverse_proxy app:3000
 }
+
+# Product website: static files built by `node site/build.mjs` into site/public.
+{$SITE_DOMAIN:pescada.io} {
+	encode zstd gzip
+	root * /srv/site
+	file_server
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+	}
+	@static path /fonts/* /favicon.svg
+	header @static Cache-Control "public, max-age=2592000"
+	handle_errors {
+		rewrite * /index.html
+		file_server
+	}
+}
+
+www.{$SITE_DOMAIN:pescada.io} {
+	redir https://{$SITE_DOMAIN:pescada.io}{uri} permanent
+}
