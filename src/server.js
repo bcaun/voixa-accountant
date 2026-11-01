@@ -59,7 +59,7 @@ export function createApp() {
     if (status >= 500) console.error(err);
     if (res.headersSent) return res.destroy();
     const message = status >= 500 ? 'Something went wrong on our side. Try again in a minute.' : err.message;
-    if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/')) return res.status(status).json({ error: message });
+    if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/')) return res.status(status).json({ error: message, ...(status < 500 && typeof err.code === 'string' && /^[a-z_]+$/.test(err.code) ? { code: err.code } : {}) });
     res.status(status).send(message);
   });
   return app;

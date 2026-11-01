@@ -41,6 +41,8 @@ DOMAIN=$DOMAIN
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 FIRM_NAME=Voixa Accounting
 WEBHOOK_TOKEN=$(openssl rand -hex 24)
+# encrypts two-step sign-in secrets; keep it with the other secrets, never change it once set
+SECRET_KEY=$(openssl rand -hex 32)
 
 # Files on this server's disk for now. Switch to s3 (Cloudflare R2) later, see DEPLOY.md.
 STORAGE_DRIVER=fs

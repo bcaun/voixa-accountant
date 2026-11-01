@@ -37,14 +37,17 @@ export async function redeemToken(token, meta) {
   const { rows: [u] } = await query('select * from users where id = $1 and disabled_at is null', [t.user_id]);
   if (!u) return null;
   const sid = randomBytes(32).toString('base64url');
-  await query(`insert into sessions (id_hash, user_id, expires_at, user_agent, ip) values ($1, $2, now() + make_interval(days => $3), $4, $5)`,
-    [sha256(sid), u.id, config.sessionDays, meta.userAgent || '', meta.ip || '']);
+  const days = u.role === 'accountant' ? config.accountantSessionDays : config.sessionDays;
+  // with a second factor set up, the session is not usable until the code is entered
+  await query(`insert into sessions (id_hash, user_id, expires_at, user_agent, ip, mfa_pending) values ($1, $2, now() + make_interval(days => $3), $4, $5, $6)`,
+    [sha256(sid), u.id, days, String(meta.userAgent || '').slice(0, 300), meta.ip || '', !!u.totp_enabled_at]);
   return sid;
 }
 
 export function setSessionCookie(res, sid) {
   res.cookie(COOKIE, sid, { httpOnly: true, sameSite: 'lax', secure: config.secureCookies, maxAge: config.sessionDays * 864e5, path: '/' });
 }
+export const sessionCookie = (req) => readCookie(req, COOKIE);
 
 function readCookie(req, name) {
   const raw = req.headers.cookie || '';
@@ -58,11 +61,21 @@ function readCookie(req, name) {
 export async function loadUser(req, _res, next) {
   const sid = readCookie(req, COOKIE);
   req.user = null;
+  req.session = null;
   if (sid) {
     const { rows: [u] } = await query(
-      `select u.* from sessions s join users u on u.id = s.user_id
+      `select u.*, s.id_hash as session_hash, s.mfa_pending, s.last_seen_at, f.require_mfa
+       from sessions s join users u on u.id = s.user_id left join firms f on f.id = u.firm_id
        where s.id_hash = $1 and s.expires_at > now() and u.disabled_at is null`, [sha256(sid)]);
-    req.user = u || null;
+    if (u && u.role === 'accountant' && Date.now() - new Date(u.last_seen_at) > config.accountantIdleHours * 36e5) {
+      // an accountant who has been away too long signs in again
+      await query('delete from sessions where id_hash = $1', [u.session_hash]);
+    } else if (u) {
+      const { session_hash, mfa_pending, last_seen_at, require_mfa, ...user } = u;
+      req.user = user;
+      req.session = { hash: session_hash, mfaPending: mfa_pending, mfaSetupRequired: !!require_mfa && user.role === 'accountant' && !user.totp_enabled_at };
+      if (Date.now() - new Date(last_seen_at) > 5 * 60e3) await query('update sessions set last_seen_at = now() where id_hash = $1', [session_hash]);
+    }
   }
   next();
 }
@@ -77,8 +90,13 @@ export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
+// Before the second factor (or its required set-up) only these API paths are open.
+const MFA_OPEN = /^\/(me|auth\/mfa|auth\/logout|me\/2fa\/(setup|enable))$/;
+
 export function requireUser(req, _res, next) {
   if (!req.user) throw new HttpError(401, 'Sign in to continue.');
+  if (req.session?.mfaPending && !MFA_OPEN.test(req.path)) throw Object.assign(new HttpError(401, 'Enter the code from your authenticator app to continue.'), { code: 'mfa_required' });
+  if (req.session?.mfaSetupRequired && !MFA_OPEN.test(req.path)) throw Object.assign(new HttpError(403, 'Your firm requires two-step sign-in. Set it up to continue.'), { code: 'mfa_setup_required' });
   next();
 }
 

@@ -2,6 +2,9 @@ import express from 'express';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout } from '../auth.js';
+import { firmEvent } from '../audit.js';
+import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
+import QRCode from 'qrcode';
 import { flushEmails } from '../mailer.js';
 import { storage } from '../storage.js';
 import { parseUpload, discard } from '../multipart.js';
@@ -23,13 +26,18 @@ const str = (v, max = 500) => String(v ?? '').trim().slice(0, max);
 /* ---------- sign-in ---------- */
 
 const attempts = new Map();
-function rateLimit(key, max = 5, windowMs = 15 * 60e3) {
+function rateLimit(key, max = 5, windowMs = 15 * 60e3, message = 'Too many sign-in requests. Wait a few minutes and try again.') {
   const now = Date.now();
   const hits = (attempts.get(key) || []).filter((t) => now - t < windowMs);
   hits.push(now);
   attempts.set(key, hits);
-  if (hits.length > max) throw new HttpError(429, 'Too many sign-in requests. Wait a few minutes and try again.');
+  if (hits.length > max) throw new HttpError(429, message);
 }
+// forget old counters now and then
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, hits] of attempts) if (!hits.length || now - hits[hits.length - 1] > 60 * 60e3) attempts.delete(k);
+}, 10 * 60e3).unref();
 
 api.post('/auth/request', json, async (req, res) => {
   const email = str(req.body?.email, 200).toLowerCase();
@@ -51,17 +59,29 @@ api.post('/auth/logout', async (req, res) => {
 
 api.use(requireUser);
 
+// generous limits that only stop runaway scripts and abuse
+api.use((req, _res, next) => {
+  if (req.method === 'GET') rateLimit(`read:${req.user.id}`, 1200, 5 * 60e3, 'Too many requests. Wait a minute and try again.');
+  else rateLimit(`write:${req.user.id}`, 300, 5 * 60e3, 'Too many changes in a short time. Wait a minute and try again.');
+  if (req.method === 'POST' && /\/(documents|reports|versions)$/.test(req.path)) rateLimit(`upload:${req.user.id}`, 120, 10 * 60e3, 'Too many uploads in a short time. Wait a few minutes and try again.');
+  next();
+});
+
 /* ---------- who am I ---------- */
 
 api.get('/me', async (req, res) => {
   const u = req.user;
+  if (req.session?.mfaPending) {
+    return res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, mfa: { enabled: true, pending: true } }, firm: '', companies: [], countries: publicCountries() });
+  }
   const { rows } = u.role === 'accountant'
     ? await query('select id, no, name, nif, city, country from companies where firm_id = $1 order by no', [u.firm_id])
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null order by f.name, c.no`, [u.id]);
-  const firm = u.firm_id ? (await query('select id, name, country from firms where id = $1', [u.firm_id])).rows[0] : null;
-  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour }, firm: firm?.name || rows[0]?.firm_name || '',
+  const firm = u.firm_id ? (await query('select id, name, country, require_mfa from firms where id = $1', [u.firm_id])).rows[0] : null;
+  res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
+    mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
     firmInfo: firm, countries: publicCountries(), companies: rows });
 });
 
@@ -84,14 +104,105 @@ api.patch('/me', json, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- two-step sign-in ---------- */
+
+api.post('/auth/mfa', json, async (req, res) => {
+  const u = req.user;
+  if (!req.session?.mfaPending) return res.json({ ok: true });
+  rateLimit(`mfa:${u.id}`, 6);
+  const code = str(req.body?.code, 40);
+  const step = verifyTotp(unseal(u.totp_secret), code);
+  if (step != null && step > Number(u.totp_last_step || 0)) {
+    await query('update users set totp_last_step = $2 where id = $1', [u.id, step]);
+  } else {
+    const h = hashRecovery(code);
+    const { rowCount } = await query('update users set recovery_codes = array_remove(recovery_codes, $2) where id = $1 and $2 = any(recovery_codes)', [u.id, h]);
+    if (!rowCount) throw new HttpError(400, 'That code is not right. Codes change every 30 seconds; use the newest one.');
+    await firmEvent({ query }, u.firm_id, u, 'recovery_code_used', `${u.name || u.email} signed in with a recovery code`);
+  }
+  await query('update sessions set mfa_pending = false where id_hash = $1', [req.session.hash]);
+  res.json({ ok: true });
+});
+
+api.post('/me/2fa/setup', async (req, res) => {
+  const u = req.user;
+  if (u.totp_enabled_at) throw new HttpError(409, 'Two-step sign-in is already on.');
+  const secret = newSecret();
+  await query('update users set totp_pending = $2 where id = $1', [u.id, seal(secret)]);
+  const uri = otpauthUri(secret, u.email);
+  res.json({ secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qr: await QRCode.toString(uri, { type: 'svg', margin: 1 }) });
+});
+
+api.post('/me/2fa/enable', json, async (req, res) => {
+  const u = req.user;
+  if (!u.totp_pending) throw new HttpError(400, 'Start the set-up first.');
+  const secret = unseal(u.totp_pending);
+  const step = verifyTotp(secret, req.body?.code);
+  if (step == null) throw new HttpError(400, 'That code is not right. Check the time on your phone and enter the newest code.');
+  const codes = recoveryCodes();
+  await query(`update users set totp_secret = totp_pending, totp_pending = null, totp_enabled_at = now(), totp_last_step = $2, recovery_codes = $3 where id = $1`,
+    [u.id, step, codes.map(hashRecovery)]);
+  await firmEvent({ query }, u.firm_id, u, 'mfa_enabled', `${u.name || u.email} turned on two-step sign-in`);
+  res.json({ recoveryCodes: codes });
+});
+
+api.post('/me/2fa/disable', json, async (req, res) => {
+  const u = req.user;
+  if (!u.totp_enabled_at) return res.json({ ok: true });
+  const { rows: [f] } = u.firm_id ? await query('select require_mfa from firms where id = $1', [u.firm_id]) : { rows: [] };
+  if (f?.require_mfa) throw new HttpError(403, 'Your firm requires two-step sign-in, so it cannot be turned off.');
+  if (verifyTotp(unseal(u.totp_secret), req.body?.code) == null) throw new HttpError(400, 'Enter a current code from your authenticator app to turn it off.');
+  await query(`update users set totp_secret = null, totp_enabled_at = null, totp_last_step = null, recovery_codes = '{}' where id = $1`, [u.id]);
+  await firmEvent({ query }, u.firm_id, u, 'mfa_disabled', `${u.name || u.email} turned off two-step sign-in`);
+  res.json({ ok: true });
+});
+
+api.post('/me/2fa/recovery', json, async (req, res) => {
+  const u = req.user;
+  if (!u.totp_enabled_at) throw new HttpError(400, 'Turn on two-step sign-in first.');
+  if (verifyTotp(unseal(u.totp_secret), req.body?.code) == null) throw new HttpError(400, 'Enter a current code from your authenticator app.');
+  const codes = recoveryCodes();
+  await query('update users set recovery_codes = $2 where id = $1', [u.id, codes.map(hashRecovery)]);
+  res.json({ recoveryCodes: codes });
+});
+
+/* ---------- my sessions ---------- */
+
+api.get('/me/sessions', async (req, res) => {
+  const { rows } = await query('select id_hash, created_at, last_seen_at, user_agent, ip from sessions where user_id = $1 and expires_at > now() order by last_seen_at desc', [req.user.id]);
+  res.json({ sessions: rows.map((s) => ({ id: s.id_hash.slice(0, 16), created_at: s.created_at, last_seen_at: s.last_seen_at, device: s.user_agent, ip: s.ip, current: s.id_hash === req.session.hash })) });
+});
+api.delete('/me/sessions/:id', async (req, res) => {
+  const id = String(req.params.id);
+  if (!/^[0-9a-f]{16}$/.test(id)) throw new HttpError(404, 'Session not found.');
+  await query('delete from sessions where user_id = $1 and left(id_hash, 16) = $2 and id_hash <> $3', [req.user.id, id, req.session.hash]);
+  res.json({ ok: true });
+});
+api.post('/me/sessions/sign-out-others', async (req, res) => {
+  const { rowCount } = await query('delete from sessions where user_id = $1 and id_hash <> $2', [req.user.id, req.session.hash]);
+  await firmEvent({ query }, req.user.firm_id, req.user, 'sessions_revoked', `${req.user.name || req.user.email} signed out ${rowCount} other session${rowCount === 1 ? '' : 's'}`);
+  res.json({ signedOut: rowCount });
+});
+
 /* ---------- the accountant's firm ---------- */
+
+api.get('/firm/events', async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can see the firm’s log.');
+  const { rows } = await query('select at, actor_name, type, text from firm_events where firm_id = $1 order by at desc limit 200', [req.user.firm_id]);
+  res.json({ events: rows });
+});
 
 api.patch('/firm', json, async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can change the firm’s details.');
   const name = str(req.body?.name, 200), country = req.body?.country;
   if (!name) throw new HttpError(400, 'Enter the firm’s name.');
   if (!isCountry(country)) throw new HttpError(400, `Choose one of: ${COUNTRY_CODES.join(', ')}.`);
-  await query('update firms set name = $2, country = $3 where id = $1', [req.user.firm_id, name, country]);
+  const requireMfa = req.body?.requireMfa === undefined ? null : !!req.body.requireMfa;
+  const { rows: [before] } = await query('select name, country, require_mfa from firms where id = $1', [req.user.firm_id]);
+  await query('update firms set name = $2, country = $3, require_mfa = coalesce($4, require_mfa) where id = $1', [req.user.firm_id, name, country, requireMfa]);
+  const changes = [before.name !== name && `name “${before.name}” → “${name}”`, before.country !== country && `country ${before.country} → ${country}`,
+    requireMfa != null && requireMfa !== before.require_mfa && (requireMfa ? 'two-step sign-in now required' : 'two-step sign-in no longer required')].filter(Boolean);
+  if (changes.length) await firmEvent({ query }, req.user.firm_id, req.user, 'firm_updated', `${req.user.name || req.user.email} changed the firm: ${changes.join(', ')}`, { name, country, requireMfa });
   res.json({ ok: true });
 });
 

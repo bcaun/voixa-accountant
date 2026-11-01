@@ -10,6 +10,11 @@ export const config = {
   trustProxy: env.TRUST_PROXY === '1',
   secureCookies: (env.APP_URL || '').startsWith('https://'),
   sessionDays: num(env.SESSION_DAYS, 30),
+  // accountants see every client of the firm, so their sessions are shorter and end after a quiet spell
+  accountantSessionDays: num(env.ACCOUNTANT_SESSION_DAYS, 7),
+  accountantIdleHours: num(env.ACCOUNTANT_IDLE_HOURS, 12),
+  secretKey: env.SECRET_KEY || '',
+  alertEmail: env.ALERT_EMAIL || '',
   loginLinkMinutes: num(env.LOGIN_LINK_MINUTES, 30),
   maxUploadMb: num(env.MAX_UPLOAD_MB, 25),
 

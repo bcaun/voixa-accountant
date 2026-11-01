@@ -176,7 +176,7 @@ function renderHeader() {
   const switcher = S.me.role === 'client' && S.companies.length > 1
     ? `<select class="input" id="coSwitch" aria-label="Company" style="width:auto">${S.companies.map((c) => `<option value="${c.id}" ${c.id === S.route.c ? 'selected' : ''}>${esc(c.name)}${new Set(S.companies.map((x) => x.firm_name)).size > 1 ? ` (${esc(c.firm_name)})` : ''}</option>`).join('')}</select>` : '';
   const firm = S.me.role === 'accountant' ? `<button class="btn small" data-act="firm-settings" title="Firm settings">${esc(S.firm)} · ${esc(S.firmInfo?.country || '')}</button>` : '';
-  h.innerHTML = `${switcher}${firm}<span class="who"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? 'Accountant' : 'Client'}</span><button class="btn small" data-act="logout">Sign out</button>`;
+  h.innerHTML = `${switcher}${firm}<button class="who linkbtn" style="font-size:13px;color:var(--text);text-decoration:none" data-act="account" title="Your account"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? 'Accountant' : 'Client'}</button><button class="btn small" data-act="logout">Sign out</button>`;
   $('#coSwitch')?.addEventListener('change', (e) => go(e.target.value));
 }
 
@@ -189,6 +189,71 @@ function renderLogin(sentTo) {
       <div class="field"><label for="li-email">Email</label><input id="li-email" class="input" type="email" autocomplete="email" required></div>
       <p class="err" id="liErr" hidden></p><button class="btn primary" type="submit">Email me a sign-in link</button></form>`}</section>`;
   $('#li-email')?.focus();
+}
+
+/* ---------- two-step sign-in ---------- */
+function renderMfaCode() {
+  $('#hdrRight').innerHTML = `<button class="btn small" data-act="logout">Sign out</button>`;
+  $('#view').innerHTML = `<section class="card pad setup" style="max-width:480px;margin:40px auto">
+    <form id="mfaForm" novalidate style="display:grid;gap:14px"><div><h1>Enter your code</h1><p class="sub" style="margin-top:6px">Open your authenticator app and enter the 6-digit code for Pescada (${esc(S.me.email)}). Lost your phone? Enter one of your recovery codes instead.</p></div>
+    <div class="field"><label for="mfa-code">Code</label><input id="mfa-code" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="12" style="letter-spacing:.2em;font-family:var(--f-mono)"></div>
+    <p class="err" id="mfaErr" hidden></p><button class="btn primary" type="submit">Continue</button></form></section>`;
+  $('#mfa-code').focus();
+}
+function setupBlock(intro) {
+  return `<div id="mfaSetup" style="display:grid;gap:14px">${intro}
+    <div><button class="btn primary" type="button" data-act="mfa-start">Set up two-step sign-in</button></div></div>`;
+}
+function renderMfaSetupRequired() {
+  $('#hdrRight').innerHTML = `<button class="btn small" data-act="logout">Sign out</button>`;
+  $('#view').innerHTML = `<section class="card pad setup" style="max-width:560px;margin:40px auto">${setupBlock(`<div><h1>Set up two-step sign-in</h1><p class="sub" style="margin-top:6px">${esc(S.firm || 'Your firm')} requires a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) when accountants sign in. It takes a minute.</p></div>`)}</section>`;
+}
+async function startMfaSetup() {
+  const box = $('#mfaSetup'); if (!box) return;
+  try {
+    const s = await api('/me/2fa/setup', { method: 'POST', body: {} });
+    box.innerHTML = `<p>1. Scan this code with your authenticator app.</p>
+      <div style="width:200px;height:200px;background:#fff;padding:8px;border-radius:14px;border:1px solid var(--line)">${s.qr.replace('<svg ', '<svg width="184" height="184" ')}</div>
+      <p class="sub" style="font-size:13px">Cannot scan? Enter this key by hand: <span class="mono" style="font-size:13px">${esc(s.secret)}</span></p>
+      <form id="mfaEnable" novalidate style="display:grid;gap:12px"><div class="field"><label for="mfa-new">2. Enter the 6-digit code it shows</label><input id="mfa-new" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="letter-spacing:.2em;font-family:var(--f-mono)"></div>
+      <p class="err" id="mfaNewErr" hidden></p><div><button class="btn primary" type="submit">Turn on</button></div></form>`;
+    $('#mfa-new').focus();
+  } catch (err) { toast(err.message); }
+}
+function showRecoveryCodes(codes, done) {
+  openModal(`${modalHead('Your recovery codes')}<div class="modal-b"><p>Keep these codes somewhere safe, for example in your password manager. Each one signs you in once if you lose your phone. They are shown only now.</p>
+    <pre class="receipt" style="font:500 15px/1.9 var(--f-mono);columns:2">${codes.map(esc).join('\n')}</pre>
+    <div class="dr-actions"><button class="btn primary" type="button" data-act="${done ? 'reload' : 'close-modal'}">I have saved them</button></div></div>`);
+}
+
+/* ---------- account ---------- */
+async function accountModal() {
+  const me = S.me, acc = me.role === 'accountant';
+  let sessions = [];
+  try { sessions = (await api('/me/sessions')).sessions; } catch { /* shown empty */ }
+  const device = (ua) => { const u = String(ua || ''); const os = /iPhone|iPad/.test(u) ? 'iPhone / iPad' : /Android/.test(u) ? 'Android' : /Mac OS/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /Linux/.test(u) ? 'Linux' : 'Unknown device';
+    const br = /Edg\//.test(u) ? 'Edge' : /Chrome\//.test(u) ? 'Chrome' : /Firefox\//.test(u) ? 'Firefox' : /Safari\//.test(u) ? 'Safari' : ''; return `${br ? `${br} on ` : ''}${os}`; };
+  const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === me.digestHour ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('');
+  openModal(`${modalHead('Your account')}<div class="modal-b">
+    <form id="accForm" novalidate style="display:grid;gap:12px">
+      <div class="field"><label for="ac-name">Your name</label><input id="ac-name" class="input" value="${esc(me.name || '')}"></div>
+      <div class="grid2"><div class="field"><label for="ac-mode">Email notifications</label><select id="ac-mode" class="input">
+        <option value="digest" ${me.notifyMode === 'digest' ? 'selected' : ''}>One daily summary</option><option value="instant" ${me.notifyMode === 'instant' ? 'selected' : ''}>An email for every event</option></select></div>
+      <div class="field"><label for="ac-hour">Summary time (${esc(cityOfTz())})</label><select id="ac-hour" class="input">${hours}</select></div></div>
+      <p class="sub" style="font-size:13px">Change requests and reminders always arrive at once.</p>
+      <p class="err" id="acErr" hidden></p><div><button class="btn primary" type="submit">Save</button></div></form>
+    <h3 style="margin-top:8px">Two-step sign-in</h3>
+    ${me.mfa?.enabled
+    ? `<p>On. You have ${me.mfa.recoveryLeft} unused recovery code${me.mfa.recoveryLeft === 1 ? '' : 's'}.</p>
+       <form id="mfaManage" novalidate style="display:grid;gap:10px"><div class="field"><label for="mm-code">Current code from your app</label><input id="mm-code" class="input" inputmode="numeric" maxlength="6" style="font-family:var(--f-mono)"></div>
+       <p class="err" id="mmErr" hidden></p><div class="dr-actions"><button class="btn" type="submit" data-do="recovery">New recovery codes</button><button class="btn" type="submit" data-do="disable">Turn off</button></div></form>`
+    : setupBlock(`<p>${acc ? 'You see the documents of every client of the firm. A code from an authenticator app at sign-in keeps them safe even if someone gets into your email.' : 'Add a code from an authenticator app to your sign-in.'}</p>`)}
+    <h3 style="margin-top:8px">Where you are signed in</h3>
+    <div class="people">${sessions.map((x) => `<div class="person"><div><b>${esc(device(x.device))}</b>${x.current ? ' <span class="pill sent" style="margin-left:6px">This device</span>' : ''}<br><span class="sub">Signed in ${fmtDate(x.created_at)} · last active ${ago(x.last_seen_at)}${x.ip ? ` · ${esc(x.ip)}` : ''}</span></div>
+      ${x.current ? '' : `<button class="btn small" data-act="session-out" data-id="${x.id}">Sign out</button>`}</div>`).join('')}</div>
+    ${sessions.length > 1 ? '<div><button class="btn" data-act="sessions-out">Sign out everywhere else</button></div>' : ''}
+  </div>`);
+  if (!acc) { $('#ac-mode').closest('.grid2').hidden = true; $('#ac-mode').closest('form').querySelector('.sub').hidden = true; }
 }
 
 /* ---------- shell (built once per view, holds forms) ---------- */
@@ -705,6 +770,7 @@ function firmModal() {
     <div class="field"><label for="fm-name">Firm name</label><input id="fm-name" class="input" value="${esc(S.firm)}"></div>
     <div class="field"><label for="fm-country">Country</label><select id="fm-country" class="input">${countryOptions(S.firmInfo?.country)}</select></div>
     <p class="sub" style="font-size:13px">Clients see the firm name in every email. The country is the default for new clients; each client keeps its own country.</p>
+    <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="fm-mfa" ${S.firmInfo?.require_mfa ? 'checked' : ''} style="margin-top:4px"><span>Require two-step sign-in for every accountant of the firm</span></label>
     <p class="err" id="fmErr" hidden></p>
     <div class="dr-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-act="close-modal">Cancel</button></div></form>`);
 }
@@ -776,10 +842,34 @@ document.addEventListener('submit', async (e) => {
         .then(() => true, (err) => { showErr('#coErr', err.message); return false; });
       if (ok) { closeModal(); toast('Client details saved. The change is in the log.'); await refresh(); }
     }
+    if (f.id === 'mfaForm') {
+      const done = busy(f.querySelector('button'), 'Checking…');
+      try { await api('/auth/mfa', { method: 'POST', body: { code: $('#mfa-code').value.trim() } }); location.reload(); } catch (err) { showErr('#mfaErr', err.message); done(); }
+      return;
+    }
+    if (f.id === 'mfaEnable') {
+      try { const r = await api('/me/2fa/enable', { method: 'POST', body: { code: $('#mfa-new').value.trim() } }); S.me.mfa = { ...S.me.mfa, enabled: true }; showRecoveryCodes(r.recoveryCodes, true); } catch (err) { showErr('#mfaNewErr', err.message); }
+      return;
+    }
+    if (f.id === 'mfaManage') {
+      const what = e.submitter?.dataset.do, code = $('#mm-code').value.trim();
+      try {
+        if (what === 'disable') { await api('/me/2fa/disable', { method: 'POST', body: { code } }); S.me.mfa.enabled = false; closeModal(); toast('Two-step sign-in is off.'); }
+        else { const r = await api('/me/2fa/recovery', { method: 'POST', body: { code } }); showRecoveryCodes(r.recoveryCodes); }
+      } catch (err) { showErr('#mmErr', err.message); }
+      return;
+    }
+    if (f.id === 'accForm') {
+      const body = { name: $('#ac-name').value.trim() };
+      if (S.me.role === 'accountant') Object.assign(body, { notifyMode: $('#ac-mode').value, digestHour: Number($('#ac-hour').value) });
+      const ok = await api('/me', { method: 'PATCH', body }).then(() => true, (err) => { showErr('#acErr', err.message); return false; });
+      if (ok) { Object.assign(S.me, body); closeModal(); toast('Saved.'); renderHeader(); }
+      return;
+    }
     if (f.id === 'firmForm') {
       const name = $('#fm-name').value.trim(), country = $('#fm-country').value;
-      const ok = await api('/firm', { method: 'PATCH', body: { name, country } }).then(() => true, (err) => { showErr('#fmErr', err.message); return false; });
-      if (ok) { S.firm = name; S.firmInfo = { ...S.firmInfo, name, country }; closeModal(); toast('Firm details saved.'); renderShell(); await refresh(); }
+      const ok = await api('/firm', { method: 'PATCH', body: { name, country, requireMfa: $('#fm-mfa').checked } }).then(() => true, (err) => { showErr('#fmErr', err.message); return false; });
+      if (ok) { S.firm = name; S.firmInfo = { ...S.firmInfo, name, country, require_mfa: $('#fm-mfa').checked }; closeModal(); toast('Firm details saved.'); renderShell(); await refresh(); }
     }
     if (f.id === 'memberForm') {
       const email = $('#mb-email').value.trim();
@@ -847,6 +937,11 @@ document.addEventListener('click', async (e) => {
     case 'new-client': clientModal(); break;
     case 'edit-client': clientModal(true); break;
     case 'firm-settings': firmModal(); break;
+    case 'account': accountModal(); break;
+    case 'mfa-start': startMfaSetup(); break;
+    case 'reload': location.reload(); break;
+    case 'session-out': try { await api(`/me/sessions/${b.dataset.id}`, { method: 'DELETE' }); toast('Signed out on that device.'); accountModal(); } catch (err) { toast(err.message); } break;
+    case 'sessions-out': try { const r = await api('/me/sessions/sign-out-others', { method: 'POST', body: {} }); toast(`Signed out on ${r.signedOut} other device${r.signedOut === 1 ? '' : 's'}.`); accountModal(); } catch (err) { toast(err.message); } break;
     case 'preset': {
       const p = presets()[+b.dataset.i];
       $('#ob-kind').value = p.kind; $('#ob-title').value = p.title; $('#ob-cat').value = p.category; $('#ob-freq').value = p.frequency;
@@ -893,6 +988,8 @@ setInterval(poll, 20000);
   try {
     const me = await api('/me');
     S.me = me.user; S.firm = me.firm; S.companies = me.companies; S.firmInfo = me.firmInfo; S.countries = me.countries || [];
+    if (me.user.mfa?.pending) return renderMfaCode();
+    if (me.user.mfa?.setupRequired) return renderMfaSetupRequired();
     if (S.firmInfo) TZ = COUNTRY(S.firmInfo.country).tz;
     renderShell();
     await route();
