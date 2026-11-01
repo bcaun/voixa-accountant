@@ -4,6 +4,8 @@ import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout } from '../auth.js';
 import { firmEvent } from '../audit.js';
 import { scanStored } from '../antivirus.js';
+import { inboundAddress } from '../inbound.js';
+import { makeZip } from '../zip.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
@@ -396,7 +398,7 @@ async function companyState(user, company, { days = 120 } = {}) {
   const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
-      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at },
+      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: inboundAddress(company) },
     firm: company.firm_name,
     seq: Number(company.head_seq),
     window: { days, shown: its.rows.length, total: counts.rows[0].n },
@@ -595,6 +597,88 @@ api.get('/items/:id/file', async (req, res) => {
   });
   stream.on('error', () => res.destroy());
   stream.pipe(res);
+});
+
+/* ---------- several items at once ---------- */
+
+async function readAll(stream) { const chunks = []; for await (const ch of stream) chunks.push(ch); return Buffer.concat(chunks); }
+
+/**
+ * Download the current files of several items as one ZIP (?ids=…, or ?period=YYYY-MM, or neither for
+ * everything shown). Each file counts as downloaded by this person and is logged as such.
+ */
+api.get('/companies/:id/archive', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const ids = String(req.query.ids || '').split(',').filter(isUuid);
+  const period = /^\d{4}-(\d{2}|Q[1-4])$/.test(String(req.query.period || '')) ? String(req.query.period) : null;
+  const { rows: list } = await query(
+    `select i.*, v.id as version_id, v.version as vno, v.file_name, v.storage_key, v.size, v.sha256, v.scan_status
+     from items i join versions v on v.item_id = i.id and v.version = i.version
+     where i.company_id = $1 and ($2::uuid[] is null or i.id = any($2)) and ($3::text is null or i.period = $3 or to_char(v.uploaded_at, 'YYYY-MM') = $3)
+     order by i.seq limit 300`, [company.id, ids.length ? ids : null, period]);
+  const files = list.filter((x) => x.scan_status !== 'infected');
+  const total = files.reduce((a, x) => a + Number(x.size), 0);
+  if (!files.length) throw new HttpError(404, 'There are no files to download.');
+  if (total > 400 * 1048576) throw new HttpError(413, 'That is more than 400 MB. Choose fewer documents or one month at a time.');
+  const entries = [];
+  for (const x of files) entries.push({ name: `${items.refOf(company, x)} ${x.file_name}`, data: await readAll(await storage.get(x.storage_key)) });
+  const manifest = ['ref,title,file,version,sha256', ...files.map((x) => [items.refOf(company, x), x.title, x.file_name, x.vno, x.sha256].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\r\n');
+  entries.push({ name: 'manifest.csv', data: Buffer.from('\ufeff' + manifest + '\r\n') });
+  await tx(async (c) => {
+    await lockCompany(c, company.id);
+    for (const x of files) {
+      await items.logOpen(c, { user: req.user, company, item: x, version: { id: x.version_id, version: x.vno, file_name: x.file_name, sha256: x.sha256 }, download: true });
+    }
+  });
+  const name = `pescada-${String(company.no).padStart(3, '0')}-${period || new Date().toISOString().slice(0, 10)}.zip`;
+  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'private, no-store' });
+  res.send(makeZip(entries));
+});
+
+/** Confirm receipt (or approve) several items. Only those opened since their current version are confirmed. */
+api.post('/companies/:id/confirm-many', json, async (req, res) => {
+  const ids = (req.body?.ids || []).filter(isUuid).slice(0, 300);
+  const confirmed = [], skipped = [];
+  for (const id of ids) {
+    try {
+      await tx(async (c) => {
+        const { item, company } = await itemFor(req.user, id, c);
+        if (company.id !== req.params.id) throw new HttpError(404, 'Not in this workspace.');
+        await items.confirm(c, { user: req.user, company, item });
+      });
+      confirmed.push(id);
+    } catch (err) {
+      if (!err.status || err.status >= 500) throw err;
+      skipped.push({ id, reason: err.message });
+    }
+  }
+  flushEmails().catch((err) => console.error('mail', err));
+  res.json({ confirmed, skipped });
+});
+
+/* ---------- search ---------- */
+
+api.get('/search', async (req, res) => {
+  const q = str(req.query.q, 100);
+  if (q.length < 2) return res.json({ results: [] });
+  const like = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+  const ref = /^PX-?(\d{1,4})-?(\d{1,5})$/i.exec(q.replace(/\s/g, ''));
+  const visible = req.user.role === 'accountant'
+    ? 'accountant_sees(c.id, $2)'
+    : 'exists (select 1 from memberships m where m.company_id = c.id and m.user_id = $2 and m.removed_at is null)';
+  const { rows } = await query(
+    `select distinct on (i.id) i.id, i.seq, i.kind, i.title, i.category, i.state, i.due_at, i.version_at, c.id as company_id, c.no, c.name as company_name,
+            v.file_name, d.invoice_number
+     from items i join companies c on c.id = i.company_id
+     left join versions v on v.item_id = i.id
+     left join invoice_data d on d.item_id = i.id
+     where ${visible} and (i.title ilike $1 or v.file_name ilike $1 or d.invoice_number ilike $1 or d.issuer_name ilike $1 or d.recipient_name ilike $1
+       or c.name ilike $1 ${ref ? 'or (c.no = $3 and i.seq = $4)' : ''})
+     order by i.id, i.version_at desc nulls last limit 60`,
+    ref ? [like, req.user.id, Number(ref[1]), Number(ref[2])] : [like, req.user.id]);
+  rows.sort((a, b) => new Date(b.version_at || 0) - new Date(a.version_at || 0));
+  res.json({ results: rows.map((r) => ({ id: r.id, ref: items.refOf({ no: r.no }, r), kind: r.kind, title: r.title, category: r.category, state: r.state,
+    company_id: r.company_id, company_name: r.company_name, file_name: r.file_name, invoice_number: r.invoice_number })) });
 });
 
 const simple = (fn) => async (req, res) => {

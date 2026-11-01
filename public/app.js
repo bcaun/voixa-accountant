@@ -12,7 +12,7 @@ const DOC_TYPES = ['Invoice', 'Bank statement', 'Contract', 'Receipt', 'Other'];
 const REPORT_TYPES = ['Tax return', 'Financial statements', 'Payroll', 'Other'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const S = { me: null, firm: '', firmInfo: null, countries: [], companies: [], overview: null, ws: null, wsId: null, route: { c: null, i: null }, tab: {}, search: '', shellKey: '', verify: null, seen: new Set() };
+const S = { filt: {}, lists: {}, me: null, firm: '', firmInfo: null, countries: [], companies: [], overview: null, ws: null, wsId: null, route: { c: null, i: null }, tab: {}, search: '', shellKey: '', verify: null, seen: new Set() };
 
 /* ---------- formatting ---------- */
 // dates show in the open client's country time, or the firm's on the overview
@@ -166,7 +166,51 @@ function row(it, opts = {}) {
   const cid = it.company_id || S.route.c;
   return `<button class="row" data-act="item" data-c="${cid}" data-id="${it.id}"><span class="ico ${col}" aria-hidden="true">${code}</span><span class="rm"><span class="rt">${esc(it.title)}</span><span class="rs">${bits.join(' · ')}</span></span>${compact ? '' : tracker(it)}<span class="pill ${tone}">${label}</span></button>`;
 }
-const list = (items, empty, opts) => (items.length ? `<div class="list${opts?.compact ? ' compact' : ''}">${items.map((i) => row(i, opts)).join('')}</div>` : `<div class="empty">${empty}</div>`);
+const list = (items, empty, opts) => (items.length ? `<div class="list${opts?.compact ? ' compact' : ''}">${items.map((i) => (opts?.select
+  ? `<div class="sel-row"><input type="checkbox" aria-label="Select ${esc(i.title)}" data-sel="${opts.select}" value="${i.id}" ${S.filt[opts.select]?.picked.has(i.id) ? 'checked' : ''}>${row(i, opts)}</div>`
+  : row(i, opts))).join('')}</div>` : `<div class="empty">${empty}</div>`);
+
+/* ---------- filters, selection and bulk actions on a list ---------- */
+const STATUS_F = { all: 'All', waiting: 'Waiting', done: 'Done', overdue: 'Overdue' };
+function filtState(key) { return (S.filt[key] ||= { q: '', status: 'all', period: '', selecting: false, picked: new Set() }); }
+function applyFilter(key, items) {
+  const f = filtState(key), q = f.q.trim().toLowerCase(), now = Date.now();
+  return items.filter((i) => {
+    if (q && ![i.title, i.ref, i.category, i.versions?.[i.versions.length - 1]?.file_name].some((x) => String(x || '').toLowerCase().includes(q))) return false;
+    if (f.period && i.period !== f.period && String(i.status.version_at || i.created_at).slice(0, 7) !== f.period) return false;
+    const done = i.status.state === 'done';
+    if (f.status === 'waiting' && done) return false;
+    if (f.status === 'done' && !done) return false;
+    if (f.status === 'overdue' && (done || !i.due_at || new Date(i.due_at) > now)) return false;
+    return true;
+  });
+}
+/** A list with its toolbar. Typing in the toolbar redraws only the list, so focus stays put. */
+function toolList(key, items, empty, opts = {}) {
+  const f = filtState(key);
+  const periods = [...new Set(items.flatMap((i) => [i.period, String(i.status.version_at || i.created_at || '').slice(0, 7)]).filter((p) => /^\d{4}-\d{2}$/.test(p)))].sort().reverse();
+  const canConfirm = items.some((i) => isRecipient(i) && i.kind !== 'request');
+  const tools = items.length > 1 || f.q || f.status !== 'all' || f.period ? `<div class="tools" data-key="${key}">
+    <input class="input" type="search" placeholder="Filter by name, file or reference" value="${esc(f.q)}" data-filter="q" aria-label="Filter">
+    <select class="input" data-filter="status" aria-label="Status">${Object.entries(STATUS_F).map(([k, v]) => `<option value="${k}" ${f.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <select class="input" data-filter="period" aria-label="Month"><option value="">Any month</option>${periods.map((p) => `<option value="${p}" ${f.period === p ? 'selected' : ''}>${periodLabel(p)}</option>`).join('')}</select>
+    <button class="btn small" data-act="sel-toggle" data-key="${key}">${f.selecting ? 'Done selecting' : 'Select'}</button></div>` : '';
+  const bulk = f.selecting ? `<div class="bulk" id="bulk-${key}">${bulkBar(key, canConfirm)}</div>` : '';
+  S.lists[key] = { items, empty, opts };
+  return `${tools}${bulk}<div id="lst-${key}">${list(applyFilter(key, items), f.q || f.status !== 'all' || f.period ? 'Nothing matches the filter.' : empty, { ...opts, select: f.selecting ? key : null })}</div>`;
+}
+function bulkBar(key, canConfirm) {
+  const n = filtState(key).picked.size;
+  return `<span>${n} selected</span><button class="btn small" data-act="sel-all" data-key="${key}">Select all shown</button>
+    <button class="btn small" data-act="bulk-zip" data-key="${key}" ${n ? '' : 'disabled'}>Download as ZIP</button>
+    ${canConfirm ? `<button class="btn small primary" data-act="bulk-confirm" data-key="${key}" ${n ? '' : 'disabled'}>Confirm selected</button>` : ''}`;
+}
+function redrawList(key) {
+  const L = S.lists[key]; if (!L) return;
+  const f = filtState(key);
+  const box = document.getElementById(`lst-${key}`); if (box) box.innerHTML = list(applyFilter(key, L.items), 'Nothing matches the filter.', { ...L.opts, select: f.selecting ? key : null });
+  const bar = document.getElementById(`bulk-${key}`); if (bar) bar.innerHTML = bulkBar(key, L.items.some((i) => isRecipient(i) && i.kind !== 'request'));
+}
 const newest = (a, b) => new Date(b.status.sent_at || b.created_at) - new Date(a.status.sent_at || a.created_at);
 
 /* ---------- header ---------- */
@@ -226,6 +270,83 @@ function showRecoveryCodes(codes, done) {
     <div class="dr-actions"><button class="btn primary" type="button" data-act="${done ? 'reload' : 'close-modal'}">I have saved them</button></div></div>`);
 }
 
+/** First visits: three steps that explain the workspace, until dismissed. */
+function tipsCard(c) {
+  let seen = false; try { seen = localStorage.getItem(`pescada.tips.${c.id}`) === '1'; } catch { /* private mode */ }
+  if (seen) return '';
+  return `<div class="card pad tips" id="tips" style="flex-basis:100%"><h3>How this workspace works</h3><ol>
+    <li><b>Send documents</b> with the form below${c.inbound_address ? ', or by email to the workspace address' : ''}. Each file is fingerprinted and you see when your accountant opens and confirms it.</li>
+    <li><b>Answer requests.</b> When your accountant needs something, it appears under “Needs your attention” with its due date.</li>
+    <li><b>Open and approve reports</b> your accountant sends you, or ask for changes. Every step is recorded for both sides.</li></ol>
+    <button class="btn small" data-act="tips-done" data-id="${c.id}">Got it</button></div>`;
+}
+
+/* ---------- search across workspaces ---------- */
+function searchModal(q) {
+  openModal(`${modalHead('Search documents')}<div class="modal-b">
+    <input id="sq" class="input" type="search" placeholder="Title, file name, invoice number, supplier, client or reference (PX-001-0004)" value="${esc(q)}">
+    <div id="sqRes" class="list compact"></div></div>`);
+  const i = $('#sq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length);
+  if (q) runSearch(q);
+}
+async function runSearch(q) {
+  const box = $('#sqRes'); if (!box) return;
+  if (q.trim().length < 2) { box.innerHTML = ''; return; }
+  try {
+    const r = await api(`/search?q=${encodeURIComponent(q)}`);
+    if ($('#sq')?.value !== q) return;
+    box.innerHTML = r.results.length ? r.results.map((x) => `<button class="row" data-act="item" data-c="${x.company_id}" data-id="${x.id}" style="grid-template-columns:minmax(0,1fr) auto">
+      <span class="rm"><span class="rt">${esc(x.title)}</span><span class="rs">${x.ref} · ${esc(x.company_name)}${x.file_name ? ` · ${esc(x.file_name)}` : ''}${x.invoice_number ? ` · invoice ${esc(x.invoice_number)}` : ''}</span></span>
+      <span class="pill ${x.state === 'done' ? 'ok' : 'sent'}">${x.state === 'done' ? 'Done' : 'Open'}</span></button>`).join('') : '<div class="empty">Nothing found.</div>';
+  } catch (err) { box.innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+}
+
+/* ---------- photos from the phone become one PDF ---------- */
+async function photosToPdf(files) {
+  if (!files.length) return;
+  const out = $('#dropFiles'); out.textContent = 'Preparing the photos…';
+  try {
+    const pages = [];
+    for (const f of files) {
+      const bmp = await createImageBitmap(f);
+      const scale = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.85));
+      pages.push({ w: cv.width, h: cv.height, jpg: new Uint8Array(await blob.arrayBuffer()) });
+    }
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', '.');
+    S.photoPdf = new File([buildPdf(pages)], `Photos ${stamp}.pdf`, { type: 'application/pdf' });
+    showPicked();
+  } catch (err) { out.textContent = ''; toast(`The photos could not be prepared: ${err.message}`); }
+}
+/** A minimal PDF: one page per JPEG, the page sized to the photo (A4 width). */
+function buildPdf(pages) {
+  const enc = new TextEncoder(), chunks = [], offsets = [];
+  let len = 0;
+  const add = (x) => { const b = typeof x === 'string' ? enc.encode(x) : x; chunks.push(b); len += b.length; };
+  const obj = (n, body) => { offsets[n] = len; add(`${n} 0 obj\n`); body(); add('\nendobj\n'); };
+  add('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n');
+  const kids = pages.map((_, i) => `${3 + i * 3} 0 R`).join(' ');
+  obj(1, () => add('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => add(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`));
+  pages.forEach((p, i) => {
+    const n = 3 + i * 3, W = 595, H = Math.round(595 * p.h / p.w);
+    const draw = `q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+    obj(n, () => add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${n + 2} 0 R >> >> /Contents ${n + 1} 0 R >>`));
+    obj(n + 1, () => add(`<< /Length ${draw.length} >>\nstream\n${draw}\nendstream`));
+    obj(n + 2, () => { add(`<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpg.length} >>\nstream\n`); add(p.jpg); add('\nendstream'); });
+  });
+  const count = 3 + pages.length * 3, xref = len;
+  add(`xref\n0 ${count}\n0000000000 65535 f \n${offsets.slice(1).map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(chunks, { type: 'application/pdf' });
+}
+function showPicked() {
+  const names = [...($('#up-file')?.files || [])].map((f) => f.name);
+  if (S.photoPdf) names.push(`${S.photoPdf.name} (${S.photoPdf.size > 1048576 ? `${(S.photoPdf.size / 1048576).toFixed(1)} MB` : `${Math.round(S.photoPdf.size / 1024)} KB`})`);
+  $('#dropFiles').textContent = names.join(', ');
+}
+
 /* ---------- account ---------- */
 async function accountModal() {
   const me = S.me, acc = me.role === 'accountant';
@@ -279,6 +400,8 @@ function renderShell() {
             <div><h2 id="upH">Send documents to ${esc(S.firm)}</h2><p class="sub" style="margin-top:4px">Every file is fingerprinted and tracked until your accountant confirms receipt.</p></div>
             <label class="drop" id="drop" for="up-file"><strong>Drop files here or choose files</strong><span>Invoices, contracts, bank statements, receipts.</span><span class="files" id="dropFiles"></span></label>
             <input type="file" id="up-file" class="sr" multiple>
+            <div class="cam-row"><label class="btn" for="up-cam">Take photos with the camera</label><input type="file" id="up-cam" class="sr" accept="image/*" capture="environment" multiple><span class="sub" style="font-size:13px">The photos are sent as one PDF.</span></div>
+            <p class="sub" id="emailIn" style="font-size:13px" hidden></p>
             <div class="grid2 type-period">
               <div class="field"><label for="up-cat">Document type</label><select id="up-cat" class="input">${DOC_TYPES.map((x) => `<option>${x}</option>`).join('')}</select></div>
               <div class="field"><label for="up-period">Period</label><input id="up-period" class="input" type="month" value="${thisMonth()}"></div>
@@ -295,14 +418,14 @@ function renderShell() {
     bindUpload();
   } else {
     v.innerHTML = `<div class="acc"><aside class="rail"><div class="field"><label for="cl-search" id="clCount">Your clients</label><input id="cl-search" class="input" type="search" placeholder="Search by name or number" value="${esc(S.search)}"></div>
-      <button class="btn small" data-act="new-client">Add a client</button><nav class="rail-list" id="clList" aria-label="Clients"></nav></aside><section id="accMain" style="min-width:0"></section></div>`;
+      <div class="rail-actions"><button class="btn small" data-act="new-client">Add a client</button><button class="btn small" data-act="search-docs">Search documents</button></div><nav class="rail-list" id="clList" aria-label="Clients"></nav></aside><section id="accMain" style="min-width:0"></section></div>`;
     $('#cl-search').addEventListener('input', (e) => { S.search = e.target.value; renderRail(); });
   }
 }
 
 function bindUpload() {
   const drop = $('#drop'), inp = $('#up-file');
-  const show = () => { $('#dropFiles').textContent = [...inp.files].map((f) => f.name).join(', '); };
+  const show = showPicked;
   inp.addEventListener('change', show);
   ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
@@ -328,7 +451,9 @@ function renderClient() {
   const w = S.ws; if (!w) return;
   const c = w.company;
   $('#hello').innerHTML = `<div><h1>${esc(c.name)}</h1><p class="sub">Client #${c.no}${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · ${esc(COUNTRY(c.country).name)} · Accountant: ${esc(w.firm)}</p></div>
-    <span class="private"><i></i>Private workspace. Other clients of ${esc(w.firm)} cannot see it.</span>`;
+    <span class="private"><i></i>Private workspace. Other clients of ${esc(w.firm)} cannot see it.</span>${tipsCard(c)}`;
+  const ei = $('#emailIn');
+  if (ei && c.inbound_address) { ei.hidden = false; ei.innerHTML = `Or email attachments to <b class="mono" style="font-size:13px">${esc(c.inbound_address)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(c.inbound_address)}">Copy</button> from your own address.`; }
   const docs = w.items.filter((i) => i.kind === 'doc').sort(newest);
   const inbound = w.items.filter((i) => i.kind !== 'doc').sort(newest);
   const attn = inbound.filter((i) => i.status.state !== 'done' && i.status.state !== 'expected')
@@ -349,8 +474,8 @@ function renderClient() {
     { id: 'people', label: 'People', count: w.members.length },
     { id: 'log', label: 'Activity log' }]);
   let body = '';
-  if (t.cur === 'sent') body = list(docs, 'You have not sent any documents yet. Use the form above to send the first one.');
-  else if (t.cur === 'recv') body = list(inbound, `Reports and requests from ${esc(w.firm)} will appear here.`);
+  if (t.cur === 'sent') body = toolList(`c-sent:${c.id}`, docs, 'You have not sent any documents yet. Use the form above to send the first one.');
+  else if (t.cur === 'recv') body = toolList(`c-recv:${c.id}`, inbound, `Reports and requests from ${esc(w.firm)} will appear here.`);
   else if (t.cur === 'bank') body = bankView();
   else if (t.cur === 'recurring') body = recurringView();
   else if (t.cur === 'people') body = peopleView();
@@ -420,8 +545,8 @@ function renderAcc() {
     { id: 'recurring', label: 'Recurring deadlines', count: w.obligations.filter((o) => o.active).length },
     { id: 'people', label: 'People', count: w.members.length },
     { id: 'log', label: 'Activity log' }]);
-  const body = t.cur === 'in' ? list(docs, 'This client has not sent any documents yet.')
-    : t.cur === 'out' ? list(out, 'You have not sent this client any reports or requests yet.')
+  const body = t.cur === 'in' ? toolList(`a-in:${c.id}`, docs, 'This client has not sent any documents yet.')
+    : t.cur === 'out' ? toolList(`a-out:${c.id}`, out, 'You have not sent this client any reports or requests yet.')
       : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
   const more = t.cur === 'in' || t.cur === 'out' ? olderNote() : '';
   m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no} · ${esc(COUNTRY(c.country).name.toUpperCase())}${c.nif ? ` · ${esc(taxLabel(c.country).toUpperCase())} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
@@ -598,7 +723,8 @@ function peopleView() {
   const w = S.ws;
   const people = w.members.map((p) => `<div class="person"><div><b>${esc(p.name || p.email)}</b><br><span class="sub">${esc(p.email)} · since ${fmtDate(p.created_at)}</span></div>
     ${p.id === S.me.id ? '<span class="pill muted">You</span>' : `<button class="btn small" data-act="remove-member" data-id="${p.id}" data-name="${esc(p.name || p.email)}">Remove access</button>`}</div>`).join('');
-  return `<p class="note">Everyone listed here can send and receive documents for ${esc(w.company.name)}. They sign in with a link sent to their email. ${S.me.role === 'client' ? `Your accountants at ${esc(w.firm)} also see this workspace.` : ''}</p>
+  return `<p class="note">Everyone listed here can send and receive documents for ${esc(w.company.name)}. They sign in with a link sent to their email. ${S.me.role === 'client' ? `Your accountants at ${esc(w.firm)} also see this workspace.` : ''}
+    ${w.company.inbound_address ? `They can also email documents to <b class="mono" style="font-size:13px">${esc(w.company.inbound_address)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(w.company.inbound_address)}">Copy</button>; only mail from the addresses listed here is accepted.` : ''}</p>
     <div class="people">${people || '<div class="empty">Nobody has access yet. Invite the first person below.</div>'}</div>
     <form class="inline-form" id="memberForm" novalidate style="margin-top:14px"><h3>Invite a person</h3>
       <div class="grid2"><div class="field"><label for="mb-name">Name</label><input id="mb-name" class="input" autocomplete="off"></div>
@@ -827,7 +953,7 @@ document.addEventListener('submit', async (e) => {
       try { await api('/auth/request', { method: 'POST', body: { email } }); renderLogin(email); } catch (err) { showErr('#liErr', err.message); done(); }
     }
     if (f.id === 'upForm') {
-      const files = [...$('#up-file').files];
+      const files = [...$('#up-file').files, ...(S.photoPdf ? [S.photoPdf] : [])];
       if (!files.length) return showErr('#upErr', 'Choose at least one file to send.');
       showErr('#upErr', '');
       const form = new FormData();
@@ -837,7 +963,7 @@ document.addEventListener('submit', async (e) => {
       const done = busy($('#upBtn'), 'Sending…');
       try {
         const r = await upload(`/companies/${S.route.c}/documents`, form, pct('#upProg', 'Uploading'));
-        f.reset(); $('#up-period').value = thisMonth(); $('#dropFiles').textContent = '';
+        f.reset(); S.photoPdf = null; $('#up-period').value = thisMonth(); $('#dropFiles').textContent = '';
         S.tab[`c:${S.route.c}`] = 'sent';
         toast(`Sent ${r.sent} file${r.sent > 1 ? 's' : ''}. Your accountant has been notified.`);
         await refresh();
@@ -953,7 +1079,7 @@ document.addEventListener('click', async (e) => {
   const a = b.dataset.act;
   const it = S.route.i && item(S.route.i);
   switch (a) {
-    case 'item': go(b.dataset.c, b.dataset.id); break;
+    case 'item': if (!$('#modal').hidden) closeModal(); go(b.dataset.c, b.dataset.id); break;
     case 'client': go(b.dataset.id || null); break;
     case 'tab': S.tab[b.dataset.key] = b.dataset.tab; renderData(); break;
     case 'log-more': loadLog(true); break;
@@ -987,6 +1113,26 @@ document.addEventListener('click', async (e) => {
     case 'edit-client': clientModal(true); break;
     case 'firm-settings': firmModal(); break;
     case 'account': accountModal(); break;
+    case 'sel-toggle': { const f = filtState(b.dataset.key); f.selecting = !f.selecting; f.picked.clear(); renderData(); break; }
+    case 'sel-all': { const k = b.dataset.key; applyFilter(k, S.lists[k].items).forEach((i) => filtState(k).picked.add(i.id)); redrawList(k); break; }
+    case 'bulk-zip': {
+      const ids = [...filtState(b.dataset.key).picked];
+      const a = document.createElement('a'); a.href = `/api/companies/${S.route.c}/archive?ids=${ids.join(',')}`; a.download = ''; document.body.append(a); a.click(); a.remove();
+      toast('Preparing the ZIP. Each file is recorded as downloaded by you.'); setTimeout(refresh, 2500); break;
+    }
+    case 'bulk-confirm': {
+      const k = b.dataset.key, ids = [...filtState(k).picked];
+      try {
+        const r = await api(`/companies/${S.route.c}/confirm-many`, { method: 'POST', body: { ids } });
+        filtState(k).picked.clear();
+        toast(r.skipped.length ? `Confirmed ${r.confirmed.length}. ${r.skipped.length} not confirmed: open them first (or download them as ZIP).` : `Confirmed ${r.confirmed.length}. The senders have been notified.`);
+        await refresh();
+      } catch (err) { toast(err.message); }
+      break;
+    }
+    case 'search-docs': searchModal($('#cl-search')?.value || ''); break;
+    case 'tips-done': try { localStorage.setItem(`pescada.tips.${b.dataset.id}`, '1'); } catch { /* private mode */ } $('#tips')?.remove(); break;
+    case 'copy': try { await navigator.clipboard.writeText(b.dataset.text); toast('Copied.'); } catch { toast(b.dataset.text); } break;
     case 'member-edit': memberModal(S.team.find((m) => m.id === b.dataset.id)); break;
     case 'member-toggle': {
       const off = b.dataset.off === '1';
@@ -1023,7 +1169,14 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.route.i) go(S.route.c); } });
 
 // keep the view current: other people act in the same workspace
+document.addEventListener('input', (e) => {
+  const key = e.target.closest?.('.tools')?.dataset.key;
+  if (key && e.target.dataset.filter) { filtState(key)[e.target.dataset.filter] = e.target.value; redrawList(key); }
+  if (e.target.id === 'sq') { clearTimeout(S.sqT); S.sqT = setTimeout(() => runSearch(e.target.value), 250); }
+});
 document.addEventListener('change', (e) => {
+  if (e.target.dataset?.sel) { const f = filtState(e.target.dataset.sel); if (e.target.checked) f.picked.add(e.target.value); else f.picked.delete(e.target.value); redrawList(e.target.dataset.sel); return; }
+  if (e.target.id === 'up-cam') { photosToPdf([...e.target.files]); return; }
   if (e.target.id === 'ai-month') { S.aiMonth = e.target.value; S.aiUsage = null; renderData(); }
   if (e.target.dataset?.toggle) { const box = $(`#${e.target.dataset.toggle}`); if (box) box.hidden = e.target.value === '1'; }
   if (e.target.id === 'co-country') {

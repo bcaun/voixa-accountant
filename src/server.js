@@ -7,6 +7,7 @@ import { HttpError, loadUser, redeemToken, requireAppHeader, setSessionCookie } 
 import { handlePostmarkWebhook } from './mailer.js';
 import { api } from './routes/api.js';
 import { authPage } from './pages.js';
+import { handleInbound } from './inbound.js';
 import { startScheduler } from './scheduler.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -37,6 +38,14 @@ export function createApp() {
     if (!want.length || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Bad token.');
     await handlePostmarkWebhook(req.body || {});
     res.json({ ok: true });
+  });
+
+  // Documents by email (Postmark inbound). Always answers 200 so Postmark does not retry refused mail.
+  app.post('/webhooks/postmark-inbound', express.json({ limit: '45mb' }), async (req, res) => {
+    const got = Buffer.from(String(req.query.token || ''));
+    const want = Buffer.from(config.mail.webhookToken);
+    if (!want.length || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Bad token.');
+    res.json(await handleInbound(req.body || {}));
   });
 
   // Sign-in links open a page with a button instead of signing in on GET, so

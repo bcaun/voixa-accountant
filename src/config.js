@@ -36,6 +36,9 @@ export const config = {
     postmarkToken: env.POSTMARK_TOKEN,
     postmarkStream: env.POSTMARK_STREAM || 'outbound',
     webhookToken: env.WEBHOOK_TOKEN || '',
+    // documents by email: <key>@INBOUND_DOMAIN, delivered to /webhooks/postmark-inbound (empty = off)
+    inboundDomain: (env.INBOUND_DOMAIN || '').toLowerCase(),
+    inboundRequireAuth: env.INBOUND_REQUIRE_AUTH !== 'off',
   },
 
   recognition: {

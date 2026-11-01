@@ -301,3 +301,20 @@ table.tx td{font-size:13px}
 .drawer table.tx{font-size:12px}
 .top select.input{height:40px;font-size:14px;border-radius:999px}
 .grid2.type-period{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr)}
+
+/* filters, selection, bulk actions */
+.tools{display:grid;grid-template-columns:minmax(0,1fr) 150px 170px auto;gap:10px;align-items:center;margin-bottom:12px}
+.tools .input{height:44px;font-size:15px}
+.tools .btn{min-height:44px}
+@media (max-width:760px){.tools{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.tools input[type=search]{grid-column:1/-1}}
+.bulk{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--blue-soft);border-radius:16px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:var(--ink)}
+.bulk span{font-weight:600;margin-right:6px}
+.sel-row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center}
+.sel-row input{width:20px;height:20px;accent-color:var(--blue)}
+.cam-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.rail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tips{background:var(--sky);border-color:transparent;display:grid;gap:10px}
+.tips ol{margin:0;padding-left:1.2em;display:grid;gap:6px;color:var(--ink)}
+:root[data-theme="dark"] .tips{background:var(--blue-soft)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tips{background:var(--blue-soft)}}
+.tips .btn{justify-self:start}
