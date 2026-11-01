@@ -84,6 +84,12 @@ async function logEmailEvent(client, m, type, text, data = {}, { once = false } 
   }
 }
 
+/** Send one email right away, without the queue or the log (operator alerts). */
+export async function sendDirect(to, subject, text) {
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  return deliver({ id: `direct-${Date.now()}`, to_email: to, subject, body_text: text, html: `<pre style="font:12px/1.5 monospace;white-space:pre-wrap">${esc(text)}</pre>` });
+}
+
 let flushing = null;
 /** Send everything queued (and retry recent failures). Safe to call often. */
 export function flushEmails() {

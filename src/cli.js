@@ -36,6 +36,19 @@ try {
     const f = await createFirm((values.name || '').trim(), country);
     console.log(`Firm created: ${f.name} (${f.country}), id ${f.id}`);
     console.log(`Add an accountant: npm run create-accountant -- --firm "${f.name}" --email someone@example.com --name "Their Name"`);
+  } else if (cmd === 'verify-all') {
+    // check every client's log: used after restoring a backup (deploy/restore-test.sh)
+    const { verifyCompany } = await import('./ledger.js');
+    const { rows } = await pool.query('select id, no, name, firm_id from companies order by firm_id, no');
+    let bad = 0, entries = 0;
+    for (const c of rows) {
+      const v = await verifyCompany(pool, c.id);
+      entries += v.count || 0;
+      if (!v.ok) { bad++; console.log(`BROKEN  #${c.no} ${c.name}: ${v.reason}`); }
+    }
+    const counts = (await pool.query(`select (select count(*) from firms) as firms, (select count(*) from items) as items, (select count(*) from versions) as files`)).rows[0];
+    console.log(`${rows.length} clients, ${entries} log entries, ${counts.items} items, ${counts.files} file versions, ${counts.firms} firms: ${bad ? `${bad} BROKEN` : 'every log verifies'}`);
+    if (bad) process.exitCode = 2;
   } else if (cmd === 'list-firms') {
     const { rows } = await pool.query(`select f.*, (select count(*) from companies c where c.firm_id = f.id)::int as clients,
       (select count(*) from users u where u.firm_id = f.id)::int as accountants from firms f order by created_at`);
@@ -64,7 +77,7 @@ try {
       if (!u) throw new Error(`No user ${email}`);
       console.log(await createLoginLink(u.id));
     } else {
-      throw new Error('Commands: create-firm, list-firms, create-accountant, login-link');
+      throw new Error('Commands: create-firm, list-firms, create-accountant, login-link, verify-all');
     }
   }
 } catch (err) {

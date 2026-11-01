@@ -10,6 +10,7 @@ import { authPage } from './pages.js';
 import { handleInbound } from './inbound.js';
 import { verifyStripeSignature, handleStripeEvent } from './billing.js';
 import { finish as finishBank } from './bankfeeds.js';
+import { alert } from './alerts.js';
 import { startScheduler } from './scheduler.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -31,6 +32,20 @@ export function createApp() {
   app.get('/healthz', async (_req, res) => {
     await pool.query('select 1');
     res.json({ ok: true });
+  });
+  // Deeper check for monitoring: database, mail queue, background work and virus scanner
+  app.get('/healthz/deep', async (req, res) => {
+    const got = Buffer.from(String(req.query.token || '')), want = Buffer.from(config.mail.webhookToken);
+    if (!want.length || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Bad token.');
+    const [{ rows: [q] }, { rows: [j] }] = await Promise.all([
+      pool.query(`select count(*) filter (where status = 'queued' and created_at < now() - interval '15 minutes')::int as stuck, count(*) filter (where status = 'failed' and attempts >= 5)::int as failed from email_messages`),
+      pool.query(`select count(*) filter (where status in ('queued','running') and updated_at < now() - interval '30 minutes')::int as stuck from jobs`),
+    ]);
+    const { scanningOn } = await import('./antivirus.js');
+    let scanner = 'off';
+    if (scanningOn()) { const { scanStream } = await import('./antivirus.js'); scanner = await scanStream((await import('node:stream')).Readable.from([Buffer.from('ping')])).then(() => 'ok', () => 'down'); }
+    const ok = !q.stuck && !j.stuck && scanner !== 'down';
+    res.status(ok ? 200 : 503).json({ ok, mail: { stuck: q.stuck, failed: q.failed }, jobs: { stuck: j.stuck }, scanner });
   });
 
   // Postmark delivery webhooks: delivery, bounce, spam complaint, open
@@ -81,7 +96,7 @@ export function createApp() {
 
   app.use((err, req, res, _next) => {
     const status = err.status || err.statusCode || 500;
-    if (status >= 500) console.error(err);
+    if (status >= 500) { console.error(err); alert('Server error', `${req.method} ${req.path}\n\n${err.stack || err.message}`); }
     if (res.headersSent) return res.destroy();
     const message = status >= 500 ? 'Something went wrong on our side. Try again in a minute.' : err.message;
     if (req.path.startsWith('/api/') || req.path.startsWith('/webhooks/')) return res.status(status).json({ error: message, ...(status < 500 && typeof err.code === 'string' && /^[a-z_]+$/.test(err.code) ? { code: err.code } : {}) });
@@ -94,4 +109,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   await migrate();
   createApp().listen(config.port, () => console.log(`Pescada on ${config.appUrl} (port ${config.port})`));
   startScheduler();
+  process.on('unhandledRejection', (err) => alert('Unhandled error', err?.stack || String(err)));
+  alert('Server started', 'The application (re)started. If you did not deploy just now, check why it restarted.').catch(() => {});
 }

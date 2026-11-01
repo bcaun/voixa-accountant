@@ -15,6 +15,7 @@ import { sendDigests } from './digest.js';
 import { scanningOn, scanStored } from './antivirus.js';
 import { runClosures } from './closure.js';
 import { syncQuantities } from './billing.js';
+import { alert } from './alerts.js';
 import { syncAll as syncBankFeeds } from './bankfeeds.js';
 
 let lastBillingSync = 0;
@@ -127,7 +128,7 @@ async function autoReminders(now) {
 
 export function startScheduler() {
   if (!config.scheduler.enabled) return () => {};
-  const tick = () => runScheduler().catch((err) => console.error('scheduler', err));
+  const tick = () => runScheduler().catch((err) => { console.error('scheduler', err); alert('Background work failed', err.stack || err.message); });
   const first = setTimeout(tick, 5000);
   const every = setInterval(tick, config.scheduler.intervalMinutes * 60e3);
   return () => { clearTimeout(first); clearInterval(every); };
