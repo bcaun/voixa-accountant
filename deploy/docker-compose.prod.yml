@@ -79,7 +79,7 @@ services:
   # Copies the database dumps to the external bucket (Cloudflare R2) every 6 hours.
   # Uses the same S3_* settings as the app; idles until they are set in deploy/.env.
   offsite:
-    image: rclone/rclone:1.69.1
+    image: rclone/rclone:1.75.2
     restart: unless-stopped
     volumes: [backups:/backups:ro]
     environment:
