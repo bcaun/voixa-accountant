@@ -86,7 +86,8 @@ async function refresh() {
     if (S.me.role === 'accountant') S.overview = await api('/overview');
     if (S.route.c) {
       if (S.wsId !== S.route.c) { S.ws = null; S.verify = null; }
-      const [ws, rec] = await Promise.all([api(`/companies/${S.route.c}`), api(`/companies/${S.route.c}/recognition`)]);
+      const [ws, rec] = await Promise.all([api(`/companies/${S.route.c}${S.allItems?.[S.route.c] ? '?all=1' : ''}`), api(`/companies/${S.route.c}/recognition`)]);
+      if (S.log && (S.log.id !== S.route.c || S.log.total !== ws.seq)) S.log = null;
       S.ws = ws; S.rec = rec;
       S.wsId = S.route.c;
       TZ = ws.company.tz || TZ;
@@ -289,7 +290,7 @@ function renderClient() {
   else if (t.cur === 'recurring') body = recurringView();
   else if (t.cur === 'people') body = peopleView();
   else body = ledgerView();
-  $('#tabsArea').innerHTML = t.html + body;
+  $('#tabsArea').innerHTML = t.html + body + (t.cur === 'sent' || t.cur === 'recv' ? olderNote() : '');
 }
 
 function countsFor(cid) {
@@ -357,8 +358,9 @@ function renderAcc() {
   const body = t.cur === 'in' ? list(docs, 'This client has not sent any documents yet.')
     : t.cur === 'out' ? list(out, 'You have not sent this client any reports or requests yet.')
       : t.cur === 'bank' ? bankView() : t.cur === 'recurring' ? recurringView() : t.cur === 'people' ? peopleView() : ledgerView();
+  const more = t.cur === 'in' || t.cur === 'out' ? olderNote() : '';
   m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">CLIENT #${c.no} · ${esc(COUNTRY(c.country).name.toUpperCase())}${c.nif ? ` · ${esc(taxLabel(c.country).toUpperCase())} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city, `${w.members.length} ${w.members.length === 1 ? 'person' : 'people'} with access`].filter(Boolean).map(esc).join(' · ')}</p></div>
-    <div class="actions"><button class="btn" data-act="edit-client">Edit details</button><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body;
+    <div class="actions"><button class="btn" data-act="edit-client">Edit details</button><button class="btn" data-act="modal-request">Request a document</button><button class="btn primary" data-act="modal-report">Send a report</button></div></div>` + t.html + body + more;
 }
 
 /* ---------- AI reading costs ---------- */
@@ -539,23 +541,45 @@ function peopleView() {
       <p class="err" id="mbErr" hidden></p><div><button class="btn primary" type="submit">Send invitation</button></div></form>`;
 }
 
+/** When the workspace shows only recent and open items, offer the rest. */
+const olderNote = () => {
+  const x = S.ws?.window;
+  return x && x.days && x.shown < x.total ? `<p class="note" style="margin-top:14px">Showing open items and everything from the last ${x.days} days (${x.shown} of ${x.total}). <button class="linkbtn" data-act="all-items">Show all</button></p>` : '';
+};
+
 /* ---------- activity log ---------- */
 function ledgerView() {
   const w = S.ws, c = w.company;
-  if (!S.verify || S.verify.id !== c.id || S.verify.count !== w.events.length) {
-    S.verify = { id: c.id, count: w.events.length, pending: true };
-    api(`/companies/${c.id}/verify`).then((r) => { if (S.verify?.id === c.id) { S.verify = { id: c.id, count: w.events.length, ...r, checked: r.count }; renderData(); } }).catch(() => {});
+  if (!S.verify || S.verify.id !== c.id || S.verify.count !== w.seq) {
+    S.verify = { id: c.id, count: w.seq, pending: true };
+    api(`/companies/${c.id}/verify`).then((r) => { if (S.verify?.id === c.id) { S.verify = { id: c.id, count: w.seq, ...r, checked: r.count }; renderData(); } }).catch(() => {});
+  }
+  if (!S.log || S.log.id !== c.id) {
+    S.log = { id: c.id, events: [], more: false, total: w.seq, loading: true };
+    loadLog();
   }
   const v = S.verify;
   const bar = v.pending ? '<div class="chain"><p>Checking the log…</p></div>' : v.ok
     ? `<div class="chain ok"><div><p>Log verified on the server: ${v.checked} entries, chain unbroken</p><small>Every entry matches its SHA-256 hash and points to the entry before it.</small></div></div>`
     : `<div class="chain bad"><div><p>Log check failed</p><small>${esc(v.reason)}. Contact ${esc(w.firm)}.</small></div></div>`;
-  const evs = w.events.slice().reverse();
-  const refs = Object.fromEntries(w.items.map((i) => [i.id, i.ref]));
+  const evs = S.log.events;
   return `<div class="section-h"><p class="note" style="margin:0">Every action is written to an append-only log. Each entry carries the hash of the entry before it, so editing or deleting any past entry breaks the chain.</p>
     <div class="tbl-actions"><a class="btn small" href="/api/companies/${c.id}/export.csv">Download CSV</a><a class="btn small" href="/api/companies/${c.id}/report" target="_blank" rel="noopener">Printable report</a></div></div>${bar}
     <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Time (${esc(cityOfTz())})</th><th>Who</th><th>What happened</th><th>Ref</th><th>Entry hash</th></tr></thead><tbody>${evs.map((e) =>
-      `<tr${e.item_id ? ` class="click" data-act="item" data-c="${c.id}" data-id="${e.item_id}"` : ''}><td class="mono">${e.seq}</td><td class="mono num" style="white-space:nowrap">${fmt(e.at)}</td><td><span class="actor ${e.actor_type}">${e.actor_type}</span></td><td style="color:var(--ink);min-width:260px">${esc(e.text)}</td><td class="mono" style="white-space:nowrap">${refs[e.item_id] || ''}</td><td class="mono" style="color:var(--muted)">${e.hash.slice(0, 12)}…</td></tr>`).join('')}</tbody></table></div>`;
+      `<tr${e.item_id ? ` class="click" data-act="item" data-c="${c.id}" data-id="${e.item_id}"` : ''}><td class="mono">${e.seq}</td><td class="mono num" style="white-space:nowrap">${fmt(e.at)}</td><td><span class="actor ${e.actor_type}">${e.actor_type}</span></td><td style="color:var(--ink);min-width:260px">${esc(e.text)}</td><td class="mono" style="white-space:nowrap">${e.ref || ''}</td><td class="mono" style="color:var(--muted)">${e.hash.slice(0, 12)}…</td></tr>`).join('')}</tbody></table></div>
+    ${S.log.loading ? '<p class="loading" style="padding:16px 0">Loading…</p>' : S.log.more ? `<div style="text-align:center;margin-top:12px"><button class="btn" data-act="log-more">Show older entries</button></div>` : ''}`;
+}
+async function loadLog(older) {
+  const L = S.log; if (!L) return;
+  L.loading = true;
+  try {
+    const before = older && L.events.length ? `&before=${L.events[L.events.length - 1].seq}` : '';
+    const r = await api(`/companies/${L.id}/events?limit=200${before}`);
+    if (S.log !== L) return;
+    L.events = older ? L.events.concat(r.events) : r.events; L.more = r.more; L.total = r.total;
+  } catch (err) { toast(err.message); }
+  L.loading = false;
+  renderData();
 }
 
 /* ---------- drawer ---------- */
@@ -793,6 +817,8 @@ document.addEventListener('click', async (e) => {
     case 'item': go(b.dataset.c, b.dataset.id); break;
     case 'client': go(b.dataset.id || null); break;
     case 'tab': S.tab[b.dataset.key] = b.dataset.tab; renderData(); break;
+    case 'log-more': loadLog(true); break;
+    case 'all-items': (S.allItems ||= {})[S.route.c] = true; await refresh(); break;
     case 'close-drawer': go(S.route.c); break;
     case 'close-modal': closeModal(); break;
     case 'logout': await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); break;
@@ -847,7 +873,20 @@ document.addEventListener('change', (e) => {
   }
 });
 window.addEventListener('focus', () => S.me && refresh());
-setInterval(() => { if (S.me && document.visibilityState === 'visible' && $('#modal').hidden) refresh(); }, 30000);
+// poll a cheap change marker and reload only when something happened
+async function poll() {
+  if (!S.me || document.visibilityState !== 'visible' || !$('#modal').hidden) return;
+  try {
+    if (S.route.c && S.ws) {
+      const ch = await api(`/companies/${S.route.c}/changes`);
+      if (ch.seq !== S.ws.seq || ch.pending) await refresh();
+    } else if (S.me.role === 'accountant') {
+      const ch = await api('/overview/changes');
+      if (ch.seq !== S.ovSeq) { S.ovSeq = ch.seq; await refresh(); }
+    } else await refresh();
+  } catch { /* offline for a moment: try again next time */ }
+}
+setInterval(poll, 20000);
 
 /* ---------- start ---------- */
 (async () => {

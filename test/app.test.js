@@ -232,8 +232,14 @@ test('email delivery webhooks are recorded in the log', async () => {
   const r = await fetch(`${base}/webhooks/postmark?token=hook-secret`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ RecordType: 'Bounce', Type: 'HardBounce', Description: 'Mailbox does not exist', MessageID: 'pm-1', Metadata: { email_id: m.id } }) });
   assert.equal(r.status, 200);
-  const ws = await ctx.acc.get(`/companies/${ctx.co1}`);
-  assert.ok(ws.events.some((e) => e.type === 'email_bounced' && /Mailbox does not exist/.test(e.text)));
+  // the invitation is not about one document, so its bounce is in the workspace log rather than on an item
+  const log = await ctx.acc.get(`/companies/${ctx.co1}/events?limit=50`);
+  assert.ok(log.events.some((e) => e.type === 'email_bounced' && /Mailbox does not exist/.test(e.text)));
+  assert.equal(log.events[0].seq, log.total, 'newest first');
+  const older = await ctx.acc.get(`/companies/${ctx.co1}/events?before=${log.events[log.events.length - 1].seq}&limit=10`);
+  assert.ok(older.events.every((e) => e.seq < log.events[log.events.length - 1].seq));
+  const ch = await ctx.acc.get(`/companies/${ctx.co1}/changes`);
+  assert.equal(ch.seq, log.total);
 });
 
 test('the log verifies, exports, and cannot be edited', async () => {

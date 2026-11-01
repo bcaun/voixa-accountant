@@ -140,42 +140,82 @@ api.patch('/companies/:id', json, async (req, res) => {
 
 api.get('/companies/:id', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
-  res.json(await companyState(req.user, company));
+  const days = req.query.all === '1' ? null : Math.min(3650, Math.max(7, Number(req.query.days) || 120));
+  res.json(await companyState(req.user, company, { days }));
 });
 
-async function companyState(user, company) {
-  const [members, obligations, its, vers, emails, evs] = await Promise.all([
+/** Cheap check for the polling client: the log only grows, so its head tells whether anything changed. */
+api.get('/companies/:id/changes', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const { rows: [j] } = await query(`select count(*)::int as n from jobs j join items i on i.id = j.item_id where i.company_id = $1 and j.status in ('queued','running')`, [company.id]);
+  res.json({ seq: Number(company.head_seq), pending: j.n });
+});
+api.get('/overview/changes', async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
+  const { rows: [r] } = await query('select coalesce(sum(head_seq), 0)::bigint as seq, count(*)::int as n from companies where firm_id = $1', [req.user.firm_id]);
+  res.json({ seq: `${r.seq}:${r.n}` });
+});
+
+/** The activity log, newest first, a page at a time. */
+api.get('/companies/:id/events', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const before = Number(req.query.before) || Number(company.head_seq) + 1;
+  const limit = Math.min(500, Math.max(10, Number(req.query.limit) || 100));
+  const { rows } = await query(
+    `select e.seq, e.at, e.actor_type, e.actor_name, e.type, e.item_id, e.text, e.hash, i.seq as item_seq
+     from events e left join items i on i.id = e.item_id where e.company_id = $1 and e.seq < $2 order by e.seq desc limit $3`, [company.id, before, limit]);
+  res.json({ events: rows.map(({ item_seq, ...e }) => ({ ...e, ref: item_seq ? items.refOf(company, { seq: item_seq }) : null })),
+    total: Number(company.head_seq), more: rows.length === limit && rows[rows.length - 1].seq > 1 });
+});
+
+/**
+ * A workspace as the web client shows it. To stay fast as years of documents pile up, it holds
+ * everything still open plus what changed in the last `days` days (all of it when days is null).
+ */
+async function companyState(user, company, { days = 120 } = {}) {
+  const [members, obligations, its, counts] = await Promise.all([
     query(`select u.id, u.name, u.email, m.created_at from memberships m join users u on u.id = m.user_id
            where m.company_id = $1 and m.removed_at is null order by m.created_at`, [company.id]),
     query('select * from obligations where company_id = $1 order by active desc, created_at', [company.id]),
-    query('select * from items where company_id = $1 order by seq', [company.id]),
+    days == null
+      ? query('select * from items where company_id = $1 order by seq', [company.id])
+      : query(`select * from items where company_id = $1 and (state <> 'done' or coalesce(done_at, version_at, created_at) > now() - make_interval(days => $2)
+               or due_at > now() - make_interval(days => $2)) order by seq`, [company.id, days]),
+    query(`select count(*)::int as n from items where company_id = $1`, [company.id]),
+  ]);
+  const ids = its.rows.map((i) => i.id);
+  const [vers, emails, evs] = await Promise.all([
     query(`select v.id, v.item_id, v.version, v.file_name, v.mime, v.size, v.sha256, v.uploaded_at, v.replace_reason, u.name as uploaded_by
-           from versions v join items i on i.id = v.item_id left join users u on u.id = v.uploaded_by
-           where i.company_id = $1 order by v.version`, [company.id]),
-    query(`select item_id, to_email, kind, status, created_at, updated_at from email_messages
-           where company_id = $1 and item_id is not null order by created_at`, [company.id]),
-    query('select seq, at, actor_type, actor_id, actor_name, type, item_id, text, hash from events where company_id = $1 order by seq', [company.id]),
+           from versions v left join users u on u.id = v.uploaded_by where v.item_id = any($1) order by v.version`, [ids]),
+    // ordinary notifications, and daily summaries that listed the item
+    query(`select item_id, to_email, kind, status, created_at, updated_at from email_messages where item_id = any($1)
+           union all
+           select x.item_id, m.to_email, m.kind, m.status, m.created_at, m.updated_at from email_items x join email_messages m on m.id = x.email_id
+           where x.item_id = any($1) order by created_at`, [ids]),
+    query('select seq, at, actor_type, actor_id, actor_name, type, item_id, text, hash, data from events where item_id = any($1) order by seq', [ids]),
   ]);
   const byItem = (rows) => rows.reduce((m, r) => ((m[r.item_id] ||= []).push(r), m), {});
-  const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows.filter((e) => e.item_id));
-  const { rows: evData } = await query('select item_id, type, actor_type, at, data from events where company_id = $1 and item_id is not null order by seq', [company.id]);
-  const statusEvents = byItem(evData);
+  const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
       tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at },
     firm: company.firm_name,
+    seq: Number(company.head_seq),
+    window: { days, shown: its.rows.length, total: counts.rows[0].n },
     members: members.rows,
     obligations: obligations.rows.map((o) => ({ ...o, description: companies.describeObligation(o) })),
     items: its.rows.map((i) => {
-      const status = items.computeStatus(i.kind, statusEvents[i.id] || []);
-      const mine = (evMap[i.id] || []).some((e) => e.actor_id === user.id && (e.type === 'opened' || e.type === 'downloaded') && status.version_at && new Date(e.at) >= new Date(status.version_at));
+      const ev = evMap[i.id] || [];
+      const status = items.computeStatus(i.kind, ev);
+      const mine = ev.some((e) => e.actor_id === user.id && (e.type === 'opened' || e.type === 'downloaded') && status.version_at && new Date(e.at) >= new Date(status.version_at));
       return {
         id: i.id, ref: items.refOf(company, i), kind: i.kind, title: i.title, category: i.category, period: i.period, note: i.note,
         due_at: i.due_at, obligation_id: i.obligation_id, for_request: i.for_request, fulfilled_by: i.fulfilled_by, created_at: i.created_at,
         status, opened_by_me: mine, versions: vMap[i.id] || [], emails: eMap[i.id] || [],
       };
     }),
-    events: evs.rows.map(({ actor_id, ...e }) => e),
+    // the log entries of the items above (the whole log is paged through /events)
+    events: evs.rows.map(({ actor_id, data, ...e }) => e),
   };
 }
 
