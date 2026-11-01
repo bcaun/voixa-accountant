@@ -15,6 +15,7 @@ import { sendDigests } from './digest.js';
 import { scanningOn, scanStored } from './antivirus.js';
 import { runClosures } from './closure.js';
 import { syncQuantities } from './billing.js';
+import { syncAll as syncBankFeeds } from './bankfeeds.js';
 
 let lastBillingSync = 0;
 
@@ -31,6 +32,7 @@ export async function runScheduler(now = new Date()) {
       await processJobs();
       const rescanned = await rescanPending();
       const closures = await runClosures(now);
+      await syncBankFeeds(now).catch((err) => console.error('bank feeds', err.message));
       if (now - lastBillingSync > 24 * 36e5) { lastBillingSync = now.getTime(); await syncQuantities().catch((err) => console.error('billing', err.message)); }
       const digests = await sendDigests(now);
       await flushEmails();

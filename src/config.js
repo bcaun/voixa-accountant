@@ -64,6 +64,14 @@ export const config = {
     apiBase: env.STRIPE_API_BASE || 'https://api.stripe.com',
   },
 
+  // bank statements through open banking (GoCardless Bank Account Data); off without keys
+  bankFeeds: {
+    secretId: env.GOCARDLESS_SECRET_ID || '',
+    secretKey: env.GOCARDLESS_SECRET_KEY || '',
+    apiBase: env.GOCARDLESS_API_BASE || 'https://bankaccountdata.gocardless.com',
+    syncHours: num(env.BANK_FEED_SYNC_HOURS, 12),
+  },
+
   // virus scanning with ClamAV; off when CLAMAV_HOST is not set
   clamav: {
     host: env.CLAMAV_HOST || '',

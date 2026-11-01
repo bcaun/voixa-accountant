@@ -15,6 +15,7 @@ import { looksLikeCsv, parseCsv } from './csv.js';
 import { looksLikeCfonb120, parseCfonb120 } from './cfonb120.js';
 import { looksLikeMt940, parseMt940 } from './mt940.js';
 import { findEInvoice, parseEInvoice, EINVOICE_LABEL } from './einvoice.js';
+import { looksLikeBankFeed, parseBankFeed } from './bankfeed.js';
 import { extractRefs, guessCounterparty, nameSimilarity, normRef } from './refs.js';
 import { sameTaxId } from '../countries.js';
 import { fmtMoney, matchCompany } from './matching.js';
@@ -95,6 +96,7 @@ class Unsupported extends Error {}
 async function readStatement(job, type, buf, name) {
   if (type === 'text') {
     const text = decodeText(buf);
+    if (looksLikeBankFeed(text)) return { method: 'bankfeed', data: parseBankFeed(text) };
     if (looksLikeNorma43(text)) return { method: 'norma43', data: parseNorma43(text) };
     if (looksLikeCfonb120(text)) return { method: 'cfonb120', data: parseCfonb120(text) };
     if (looksLikeMt940(text)) return { method: 'mt940', data: parseMt940(text) };
@@ -268,7 +270,7 @@ async function saveStatement(job, item, version, company, { method, model, data 
           t.counterparty_tax_id, t.purpose, t.invoice_refs, t.contract_refs, t.bank_reference]);
     }
     const withInv = txs.filter((t) => t.invoice_refs.length).length, withCtr = txs.filter((t) => t.contract_refs.length).length;
-    const label = { norma43: 'Norma 43 file', cfonb120: 'CFONB 120 file', mt940: 'MT940 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading of the document' }[method];
+    const label = { bankfeed: 'open banking', norma43: 'Norma 43 file', cfonb120: 'CFONB 120 file', mt940: 'MT940 file', camt053: 'camt.053 file', csv: 'CSV export', ai: 'AI reading of the document' }[method];
     await appendEvent(c, { companyId: company.id, itemId: item.id, versionId: version.id, actor: SYSTEM, type: 'statement_recognised',
       text: `Recognised ${[summary.bank_name, 'bank statement'].filter(Boolean).join(' ')}${summary.iban ? ` ${maskIban(summary.iban)}` : ''}`
         + `${summary.period_start ? `, ${summary.period_start} to ${summary.period_end}` : ''}: ${txs.length} transactions`

@@ -9,6 +9,7 @@ import { api } from './routes/api.js';
 import { authPage } from './pages.js';
 import { handleInbound } from './inbound.js';
 import { verifyStripeSignature, handleStripeEvent } from './billing.js';
+import { finish as finishBank } from './bankfeeds.js';
 import { startScheduler } from './scheduler.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -55,6 +56,12 @@ export function createApp() {
     const want = Buffer.from(config.mail.webhookToken);
     if (!want.length || got.length !== want.length || !timingSafeEqual(got, want)) throw new HttpError(401, 'Bad token.');
     res.json(await handleInbound(req.body || {}));
+  });
+
+  // The bank sends the client back here after they authorised access
+  app.get('/bank/callback', async (req, res) => {
+    const r = await finishBank(String(req.query.ref || '')).catch((err) => { console.error('bank callback', err.message); return null; });
+    res.redirect(303, r ? `/#/c/${r.companyId}?bank=${r.ok ? 'ok' : 'failed'}` : '/');
   });
 
   // Sign-in links open a page with a button instead of signing in on GET, so

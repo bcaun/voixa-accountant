@@ -692,6 +692,7 @@ function bankView() {
   return `<p class="note">Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; ${S.me.role === 'accountant' ? 'you confirm each match' : 'your accountant confirms each match'}.</p>
     ${r.pending.length ? `<div class="chain"><p>Reading ${r.pending.length} file${r.pending.length > 1 ? 's' : ''}…</p></div>` : ''}
     ${S.me.role === 'accountant' ? '<div style="margin-bottom:12px"><button class="btn small" data-act="acc-export">Export for accounting software</button></div>' : ''}
+    ${S.features?.bankFeeds ? bankFeedsBlock() : ''}
     <div class="stack" style="gap:10px">${stItems || `<div class="empty">No bank statements read yet. Upload one as “Bank statement”: ${esc(COUNTRY(S.ws?.company.country).bankFormats)}.</div>`}</div>
     <div class="section-h" style="margin-top:22px"><h3>Transactions</h3><div class="presets">
       ${[['all', `All ${r.transactions.length}`], ['none', `No invoice ${count('none')}`], ['suggested', `To confirm ${count('suggested')}`], ['confirmed', `Confirmed ${count('confirmed')}`], ['refs', 'With references']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" data-act="bank-filter" data-f="${k}">${l}</button>`).join('')}
@@ -939,6 +940,29 @@ function clientModal(edit) {
       <p class="sub" style="font-size:13.5px">At the end of the contract: the client’s people lose access at once and are told by email. You can still read and export everything for 30 days, and reopen it in that time. After that the workspace is blocked, and it is deleted once the legal retention period of its documents is over.</p>
       <div><button class="btn" type="button" data-act="close-client">Close this client…</button></div></div>` : ''}`);
 }
+function bankFeedsBlock() {
+  if (!S.bank || S.bank.id !== S.route.c) { S.bank = { id: S.route.c, connections: null }; api(`/companies/${S.route.c}/bank`).then((r) => { if (S.bank?.id === S.route.c) { S.bank.connections = r.connections; renderData(); } }).catch(() => {}); }
+  const cs = S.bank.connections;
+  const st = { pending: ['warn', 'Waiting for the bank'], linked: ['ok', 'Connected'], expired: ['bad', 'Access ended: connect again'], error: ['bad', 'Not authorised'] };
+  return `<section class="inline-form" style="margin-bottom:16px"><h3>Automatic bank statements</h3>
+    <p class="sub" style="font-size:13.5px">Connect a bank account once and new movements arrive here by themselves, read and matched like an uploaded statement. Access is read-only, through a licensed open banking provider, and lasts 90 days at a time.</p>
+    ${cs == null ? '<p class="loading" style="padding:4px 0">Loading…</p>' : cs.map((c) => `<div class="person"><div><b>${esc(c.institution_name)}</b> <span class="pill ${st[c.status]?.[0] || 'muted'}" style="margin-left:6px">${st[c.status]?.[1] || c.status}</span><br>
+      <span class="sub">${c.accounts.map((a) => esc(a.iban || a.currency)).join(', ') || '—'}${c.last_sync_at ? ` · last checked ${ago(c.last_sync_at)}` : ''}${c.expires_at ? ` · access until ${fmtDate(c.expires_at)}` : ''}</span></div>
+      <button class="btn small" data-act="bank-remove" data-id="${c.id}">Disconnect</button></div>`).join('')}
+    <div><button class="btn small" data-act="bank-connect">Connect a bank account</button></div></section>`;
+}
+async function bankConnectModal() {
+  openModal(`${modalHead('Connect a bank account')}<div class="modal-b"><p class="loading">Loading the banks…</p></div>`);
+  try {
+    const r = await api(`/companies/${S.route.c}/bank/institutions`);
+    $('#modal .modal-b').innerHTML = `<form id="bankForm" novalidate style="display:grid;gap:12px">
+      <div class="field"><label for="bk-q">Find your bank</label><input id="bk-q" class="input" type="search" placeholder="Type the bank’s name"></div>
+      <div class="field"><label for="bk-id">Bank</label><select id="bk-id" class="input" size="8" style="height:auto;padding:8px">${r.institutions.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('')}</select></div>
+      <p class="sub" style="font-size:13px">You will sign in at your bank to allow read-only access. Pescada never sees your banking password.</p>
+      <p class="err" id="bkErr" hidden></p><div class="dr-actions"><button class="btn primary" type="submit">Continue to the bank</button></div></form>`;
+    S.banks = r.institutions;
+  } catch (err) { $('#modal .modal-b').innerHTML = `<p class="err">${esc(err.message)}</p>`; }
+}
 function exportModal() {
   const c = S.ws.company, de = c.country === 'DE';
   const y = new Date().getFullYear();
@@ -1104,6 +1128,12 @@ document.addEventListener('submit', async (e) => {
       if (ok) { Object.assign(S.me, body); closeModal(); toast('Saved.'); renderHeader(); }
       return;
     }
+    if (f.id === 'bankForm') {
+      const id = $('#bk-id').value;
+      if (!id) return showErr('#bkErr', 'Choose your bank.');
+      try { const r = await api(`/companies/${S.route.c}/bank/connect`, { method: 'POST', body: { institutionId: id } }); location.href = r.url; } catch (err) { showErr('#bkErr', err.message); }
+      return;
+    }
     if (f.id === 'expForm') {
       const p = new URLSearchParams({ kind: $('#ex-kind').value, from: $('#ex-from').value, to: $('#ex-to').value });
       if (p.get('kind') === 'datev') for (const [k, id] of [['consultant', 'ex-cons'], ['client', 'ex-client'], ['bank', 'ex-bank'], ['accountLength', 'ex-len'], ['debtor', 'ex-deb'], ['creditor', 'ex-cred']]) p.set(k, $(`#${id}`).value);
@@ -1231,6 +1261,8 @@ document.addEventListener('click', async (e) => {
     case 'copy': try { await navigator.clipboard.writeText(b.dataset.text); toast('Copied.'); } catch { toast(b.dataset.text); } break;
     case 'close-client': closeClientModal(); break;
     case 'acc-export': exportModal(); break;
+    case 'bank-connect': bankConnectModal(); break;
+    case 'bank-remove': if (confirm('Disconnect this bank? Statements already fetched stay.')) { try { await api(`/companies/${S.route.c}/bank/${b.dataset.id}`, { method: 'DELETE' }); S.bank = null; toast('Bank disconnected.'); renderData(); } catch (err) { toast(err.message); } } break;
     case 'reopen-client': if (confirm('Reopen this client? Their people can sign in again.')) await act(`/companies/${S.route.c}/reopen`, {}, 'Client reopened.'); break;
     case 'member-edit': memberModal(S.team.find((m) => m.id === b.dataset.id)); break;
     case 'member-toggle': {
@@ -1271,6 +1303,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('
 document.addEventListener('input', (e) => {
   const key = e.target.closest?.('.tools')?.dataset.key;
   if (key && e.target.dataset.filter) { filtState(key)[e.target.dataset.filter] = e.target.value; redrawList(key); }
+  if (e.target.id === 'bk-q') { const q = e.target.value.toLowerCase(); $('#bk-id').innerHTML = (S.banks || []).filter((i) => i.name.toLowerCase().includes(q)).map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join(''); }
   if (e.target.id === 'sq') { clearTimeout(S.sqT); S.sqT = setTimeout(() => runSearch(e.target.value), 250); }
 });
 document.addEventListener('change', (e) => {
@@ -1304,7 +1337,9 @@ setInterval(poll, 20000);
 (async () => {
   try {
     const me = await api('/me');
-    S.me = me.user; S.firm = me.firm; S.companies = me.companies; S.firmInfo = me.firmInfo; S.countries = me.countries || [];
+    S.me = me.user; S.firm = me.firm; S.companies = me.companies; S.firmInfo = me.firmInfo; S.countries = me.countries || []; S.features = me.features || {};
+    if (/[?&]bank=ok/.test(location.hash)) setTimeout(() => toast('Bank connected. Its movements are being fetched.'), 800);
+    if (/[?&]bank=failed/.test(location.hash)) setTimeout(() => toast('The bank did not grant access. You can try again.'), 800);
     if (me.user.mfa?.pending) return renderMfaCode();
     if (me.user.mfa?.setupRequired) return renderMfaSetupRequired();
     if (location.hash.startsWith('#/billing')) { if (location.hash === '#/billing/done') toast('Thank you. Your subscription is being activated.'); history.replaceState(null, '', '#/'); }

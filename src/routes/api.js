@@ -9,6 +9,7 @@ import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { accountingExport, exportKinds } from '../exports.js';
 import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft } from '../billing.js';
+import { feedsOn, institutions, connect as connectBank, removeConnection } from '../bankfeeds.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
@@ -119,7 +120,7 @@ api.get('/me', async (req, res) => {
   if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn() });
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
-    firmInfo: firm, countries: publicCountries(), companies: rows });
+    firmInfo: firm, countries: publicCountries(), companies: rows, features: { bankFeeds: feedsOn() } });
 });
 
 /* ---------- my settings ---------- */
@@ -673,6 +674,29 @@ api.get('/companies/:id/export-all', async (req, res) => {
   });
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="pescada-${String(company.no).padStart(3, '0')}-full-export.zip"`, 'Cache-Control': 'private, no-store' });
   res.send(zip);
+});
+
+/* ---------- bank connections (open banking) ---------- */
+
+api.get('/companies/:id/bank', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const { rows } = await query(`select id, institution_name, status, accounts, linked_at, expires_at, last_sync_at, last_error from bank_connections
+                                where company_id = $1 and status <> 'removed' order by created_at desc`, [company.id]);
+  res.json({ enabled: feedsOn(), connections: rows.map((r) => ({ ...r, accounts: r.accounts.map((a) => ({ iban: a.iban ? `${a.iban.slice(0, 4)} …${a.iban.slice(-4)}` : null, currency: a.currency })) })) });
+});
+api.get('/companies/:id/bank/institutions', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  res.json({ institutions: await institutions(company.country) });
+});
+api.post('/companies/:id/bank/connect', json, async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  res.json({ url: await connectBank({ user: req.user, company, institutionId: str(req.body?.institutionId, 100) }) });
+});
+api.delete('/companies/:id/bank/:cid', async (req, res) => {
+  if (!isUuid(req.params.cid)) throw new HttpError(404, 'That bank connection does not exist.');
+  const company = await companyFor(req.user, req.params.id);
+  await removeConnection({ user: req.user, company, id: req.params.cid });
+  res.json({ ok: true });
 });
 
 /* ---------- exports for accounting software ---------- */
