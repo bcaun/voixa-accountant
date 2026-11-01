@@ -53,6 +53,17 @@ export const config = {
     monthlyBudgetUsd: num(env.AI_MONTHLY_BUDGET_USD, 0),
   },
 
+  // self sign-up and billing (Stripe is optional: without a key, sign-up still works and firms stay on trial)
+  signup: { enabled: env.SIGNUP !== 'off', trialDays: num(env.TRIAL_DAYS, 30) },
+  stripe: {
+    secretKey: env.STRIPE_SECRET_KEY || '',
+    webhookSecret: env.STRIPE_WEBHOOK_SECRET || '',
+    priceId: env.STRIPE_PRICE_ID || '',
+    // 'clients': one unit per open client workspace; 'firm': one unit per firm
+    quantity: env.STRIPE_QUANTITY === 'firm' ? 'firm' : 'clients',
+    apiBase: env.STRIPE_API_BASE || 'https://api.stripe.com',
+  },
+
   // virus scanning with ClamAV; off when CLAMAV_HOST is not set
   clamav: {
     host: env.CLAMAV_HOST || '',

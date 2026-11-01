@@ -8,6 +8,7 @@ import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { accountingExport, exportKinds } from '../exports.js';
+import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft } from '../billing.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
@@ -58,6 +59,15 @@ api.post('/auth/request', json, async (req, res) => {
   res.json({ ok: true });
 });
 
+// a firm signs itself up: a trial firm and its first administrator, signed in by email link
+api.post('/signup', json, async (req, res) => {
+  rateLimit(`signup:${req.ip}`, 5, 60 * 60e3, 'Too many sign-ups from here. Try again later.');
+  const b = req.body || {};
+  await signUp({ firmName: str(b.firmName, 200), country: b.country, name: str(b.name, 200), email: str(b.email, 200) });
+  flushEmails().catch((err) => console.error('mail', err));
+  res.json({ ok: true });
+});
+
 api.post('/auth/logout', async (req, res) => {
   await logout(req, res);
   res.json({ ok: true });
@@ -71,6 +81,14 @@ api.use((req, _res, next) => {
   else rateLimit(`write:${req.user.id}`, 300, 5 * 60e3, 'Too many changes in a short time. Wait a minute and try again.');
   if (req.method === 'POST' && /\/(documents|reports|versions)$/.test(req.path)) rateLimit(`upload:${req.user.id}`, 120, 10 * 60e3, 'Too many uploads in a short time. Wait a few minutes and try again.');
   next();
+});
+
+// When a trial has ended without a subscription, the firm can still sign in, read and export,
+// and subscribe; it cannot add or change anything until it does. Clients are not blocked.
+api.use((req, _res, next) => {
+  if (req.method === 'GET' || req.user.role !== 'accountant' || firmActive(req.firm)) return next();
+  if (/^\/(billing|me|auth|firm\/team)/.test(req.path)) return next();
+  throw Object.assign(new HttpError(402, 'Your firm’s trial has ended. Subscribe to keep working; everything you have is kept and can be exported.'), { code: 'subscription' });
 });
 
 // A closed client is read-only: nothing can be added or changed, only exported (or the client reopened).
@@ -97,7 +115,8 @@ api.get('/me', async (req, res) => {
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
-  const firm = u.firm_id ? (await query('select id, name, country, require_mfa from firms where id = $1', [u.firm_id])).rows[0] : null;
+  const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
+  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn() });
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
     firmInfo: firm, countries: publicCountries(), companies: rows });
@@ -263,6 +282,16 @@ api.patch('/firm/team/:id', json, async (req, res) => {
   });
   res.json({ ok: true });
 });
+
+/* ---------- billing ---------- */
+
+api.get('/billing', async (req, res) => {
+  requireAdmin(req.user);
+  const { rows: [f] } = await query('select plan, trial_ends_at, stripe_customer_id is not null as has_customer from firms where id = $1', [req.user.firm_id]);
+  res.json({ plan: f.plan, trialEndsAt: f.trial_ends_at, trialDaysLeft: trialDaysLeft(f), onlinePayment: billingOn(), hasCustomer: f.has_customer });
+});
+api.post('/billing/checkout', async (req, res) => { requireAdmin(req.user); res.json({ url: await checkoutUrl(req.user) }); });
+api.post('/billing/portal', async (req, res) => { requireAdmin(req.user); res.json({ url: await portalUrl(req.user) }); });
 
 /* ---------- my sessions ---------- */
 

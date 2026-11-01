@@ -67,15 +67,16 @@ export async function loadUser(req, _res, next) {
   req.session = null;
   if (sid) {
     const { rows: [u] } = await query(
-      `select u.*, s.id_hash as session_hash, s.mfa_pending, s.last_seen_at, f.require_mfa
+      `select u.*, s.id_hash as session_hash, s.mfa_pending, s.last_seen_at, f.require_mfa, f.plan as firm_plan, f.trial_ends_at as firm_trial_ends_at
        from sessions s join users u on u.id = s.user_id left join firms f on f.id = u.firm_id
        where s.id_hash = $1 and s.expires_at > now() and u.disabled_at is null`, [sha256(sid)]);
     if (u && u.role === 'accountant' && Date.now() - new Date(u.last_seen_at) > config.accountantIdleHours * 36e5) {
       // an accountant who has been away too long signs in again
       await query('delete from sessions where id_hash = $1', [u.session_hash]);
     } else if (u) {
-      const { session_hash, mfa_pending, last_seen_at, require_mfa, ...user } = u;
+      const { session_hash, mfa_pending, last_seen_at, require_mfa, firm_plan, firm_trial_ends_at, ...user } = u;
       req.user = user;
+      req.firm = user.firm_id ? { plan: firm_plan, trial_ends_at: firm_trial_ends_at } : null;
       req.session = { hash: session_hash, mfaPending: mfa_pending, mfaSetupRequired: !!require_mfa && user.role === 'accountant' && !user.totp_enabled_at };
       if (Date.now() - new Date(last_seen_at) > 5 * 60e3) await query('update sessions set last_seen_at = now() where id_hash = $1', [session_hash]);
     }

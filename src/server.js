@@ -8,6 +8,7 @@ import { handlePostmarkWebhook } from './mailer.js';
 import { api } from './routes/api.js';
 import { authPage } from './pages.js';
 import { handleInbound } from './inbound.js';
+import { verifyStripeSignature, handleStripeEvent } from './billing.js';
 import { startScheduler } from './scheduler.js';
 import { timingSafeEqual } from 'node:crypto';
 
@@ -41,6 +42,14 @@ export function createApp() {
   });
 
   // Documents by email (Postmark inbound). Always answers 200 so Postmark does not retry refused mail.
+  // Stripe subscription events, verified by signature against the raw body
+  app.post('/webhooks/stripe', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
+    const raw = req.body instanceof Buffer ? req.body.toString('utf8') : '';
+    if (!verifyStripeSignature(raw, req.get('stripe-signature'))) throw new HttpError(400, 'Bad signature.');
+    await handleStripeEvent(JSON.parse(raw));
+    res.json({ received: true });
+  });
+
   app.post('/webhooks/postmark-inbound', express.json({ limit: '45mb' }), async (req, res) => {
     const got = Buffer.from(String(req.query.token || ''));
     const want = Buffer.from(config.mail.webhookToken);

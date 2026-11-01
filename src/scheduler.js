@@ -14,6 +14,9 @@ import { processJobs } from './recognition/recognize.js';
 import { sendDigests } from './digest.js';
 import { scanningOn, scanStored } from './antivirus.js';
 import { runClosures } from './closure.js';
+import { syncQuantities } from './billing.js';
+
+let lastBillingSync = 0;
 
 const LOCK_ID = 774411;
 
@@ -28,6 +31,7 @@ export async function runScheduler(now = new Date()) {
       await processJobs();
       const rescanned = await rescanPending();
       const closures = await runClosures(now);
+      if (now - lastBillingSync > 24 * 36e5) { lastBillingSync = now.getTime(); await syncQuantities().catch((err) => console.error('billing', err.message)); }
       const digests = await sendDigests(now);
       await flushEmails();
       return { generated, reminded, digests, rescanned, closures };

@@ -46,7 +46,7 @@ async function api(path, { method = 'GET', body } = {}) {
   try { r = await fetch(`/api${path}`, opt); } catch { throw new ApiError('No connection to the server. Check your internet connection and try again.'); }
   const data = await r.json().catch(() => ({}));
   if (r.status === 401 && path !== '/me') { location.reload(); throw new ApiError('Signed out.'); }
-  if (!r.ok) throw Object.assign(new ApiError(data.error || 'Something went wrong. Try again.'), { status: r.status });
+  if (!r.ok) throw Object.assign(new ApiError(data.error || 'Something went wrong. Try again.'), { status: r.status, code: data.code });
   return data;
 }
 function upload(path, form, onProgress) {
@@ -231,8 +231,45 @@ function renderLogin(sentTo) {
     ? `<h1>Check your inbox</h1><p class="sub" style="margin-top:8px">If ${esc(sentTo)} has access, a sign-in link is on its way. It works once and expires in 30 minutes. Check the spam folder if it does not arrive within a few minutes.</p><p style="margin-top:16px"><button class="btn" data-act="login-again">Use another address</button></p>`
     : `<form id="loginForm" novalidate style="display:grid;gap:14px"><div><h1>Sign in</h1><p class="sub" style="margin-top:6px">Pescada is where you and ${esc(S.firm || 'your accountant')} send documents, and every step is recorded. Enter your email and we will send you a sign-in link.</p></div>
       <div class="field"><label for="li-email">Email</label><input id="li-email" class="input" type="email" autocomplete="email" required></div>
-      <p class="err" id="liErr" hidden></p><button class="btn primary" type="submit">Email me a sign-in link</button></form>`}</section>`;
+      <p class="err" id="liErr" hidden></p><button class="btn primary" type="submit">Email me a sign-in link</button>
+      <p class="sub" style="font-size:14px">New accounting firm? <button type="button" class="linkbtn" style="font-size:14px" data-act="signup">Start a free trial</button></p></form>`}</section>`;
   $('#li-email')?.focus();
+}
+const SIGNUP_COUNTRIES = [['ES', 'Spain'], ['IT', 'Italy'], ['FR', 'France'], ['DE', 'Germany'], ['PT', 'Portugal']];
+function renderSignup(sentTo) {
+  $('#hdrRight').innerHTML = '';
+  $('#view').innerHTML = `<section class="card pad setup" style="max-width:520px;margin:40px auto">${sentTo
+    ? `<h1>Check your inbox</h1><p class="sub" style="margin-top:8px">We sent a sign-in link to ${esc(sentTo)}. Open it to start. It works once and expires in 30 minutes.</p>`
+    : `<form id="signupForm" novalidate style="display:grid;gap:14px"><div><h1>Start your free trial</h1><p class="sub" style="margin-top:6px">30 days, no card needed. Set up your firm, invite your clients, and see every document tracked from sent to confirmed.</p></div>
+      <div class="field"><label for="su-firm">Firm name</label><input id="su-firm" class="input" autocomplete="organization"></div>
+      <div class="grid2"><div class="field"><label for="su-country">Country</label><select id="su-country" class="input">${SIGNUP_COUNTRIES.map(([c, n]) => `<option value="${c}">${n}</option>`).join('')}</select></div>
+      <div class="field"><label for="su-name">Your name</label><input id="su-name" class="input" autocomplete="name"></div></div>
+      <div class="field"><label for="su-email">Work email</label><input id="su-email" class="input" type="email" autocomplete="email"></div>
+      <p class="sub" style="font-size:13px">By starting you accept the <a href="https://pescada.io/terms/" target="_blank" rel="noopener">Terms</a> and the <a href="https://pescada.io/dpa/" target="_blank" rel="noopener">Data Processing Agreement</a>, and have read the <a href="https://pescada.io/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+      <p class="err" id="suErr" hidden></p><button class="btn primary" type="submit">Start the trial</button>
+      <p class="sub" style="font-size:14px">Already using Pescada? <button type="button" class="linkbtn" style="font-size:14px" data-act="login-again">Sign in</button></p></form>`}</section>`;
+  $('#su-firm')?.focus();
+}
+
+/* ---------- plan and billing ---------- */
+function planBanner() {
+  const f = S.firmInfo;
+  if (!f || S.me?.role !== 'accountant' || f.plan === 'internal' || f.plan === 'active') return '';
+  const admin = isAdmin();
+  const action = admin ? '<button class="btn small primary" data-act="billing">Subscribe</button>' : '<span class="sub">Ask your firm’s administrator to subscribe.</span>';
+  if (!f.active) return `<div class="chain bad" style="margin-bottom:16px"><div><p>Your trial has ended</p><small>Everything is kept and you can read and export it. Subscribe to add clients, send reports and change things again. Your clients can still send documents.</small></div><div class="tbl-actions">${action}</div></div>`;
+  if (f.plan === 'past_due') return `<div class="chain bad" style="margin-bottom:16px"><div><p>The last payment did not go through</p><small>Update the card to keep the subscription active.</small></div><div class="tbl-actions">${admin ? '<button class="btn small" data-act="billing">Billing</button>' : ''}</div></div>`;
+  if (f.plan === 'trial') return `<div class="chain" style="margin-bottom:16px"><div><p>Free trial: ${f.trialDaysLeft} day${f.trialDaysLeft === 1 ? '' : 's'} left</p><small>Subscribe any time; nothing changes for your clients.</small></div><div class="tbl-actions">${action}</div></div>`;
+  return '';
+}
+async function billingModal() {
+  let b;
+  try { b = await api('/billing'); } catch (err) { return toast(err.message); }
+  const label = { trial: `Free trial${b.trialDaysLeft != null ? `, ${b.trialDaysLeft} days left` : ''}`, active: 'Subscribed', past_due: 'Payment failed', canceled: 'Cancelled', internal: 'Included' }[b.plan];
+  openModal(`${modalHead('Subscription')}<div class="modal-b"><p><b>${label}</b></p>
+    ${b.onlinePayment ? `<p class="sub">Payment is handled by Stripe. Pescada never sees your card.</p>
+      <div class="dr-actions">${b.plan !== 'active' ? '<button class="btn primary" data-act="checkout">Subscribe</button>' : ''}${b.hasCustomer ? '<button class="btn" data-act="portal">Card, invoices and cancellation</button>' : ''}</div>`
+    : '<p class="sub">Online payment is not set up yet. Write to <a href="mailto:hello@pescada.io">hello@pescada.io</a> to subscribe.</p>'}</div>`);
 }
 
 /* ---------- two-step sign-in ---------- */
@@ -527,7 +564,7 @@ function renderAcc() {
     else if (t.cur === 'ai') body = aiUsageView();
     else body = `<div class="tbl-wrap"><table><thead><tr><th>No.</th><th>Client</th><th>Not opened by you</th><th>Opened, not confirmed</th><th>Reports you owe</th><th>Waiting on client</th><th>Overdue requests</th><th>Next deadline</th></tr></thead><tbody>${all.map(({ c, k }) =>
       `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)"><span class="mono">${esc(c.country || '')}</span>${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : '<span style="color:var(--muted)">None</span>'}</td></tr>`).join('')}</tbody></table></div>`;
-    m.innerHTML = `<div class="ws-h"><div><h1>Good to see you, ${esc(first(S.me.name) || 'there')}</h1><p class="sub" style="margin-top:6px">${esc(S.firm)} · ${o.companies.length} client workspace${o.companies.length === 1 ? '' : 's'}</p></div></div>
+    m.innerHTML = planBanner() + `<div class="ws-h"><div><h1>Good to see you, ${esc(first(S.me.name) || 'there')}</h1><p class="sub" style="margin-top:6px">${esc(S.firm)} · ${o.companies.length} client workspace${o.companies.length === 1 ? '' : 's'}</p></div></div>
       <div class="kpis"><div class="kpi ${sum('stale') ? 'alert' : ''}"><b class="num">${sum('unopened')}</b><span>Documents you have not opened${sum('stale') ? ` · ${sum('stale')} over 48 h` : ''}</span></div>
       <div class="kpi"><b class="num">${sum('unconf')}</b><span>Opened, receipt not confirmed</span></div>
       <div class="kpi"><b class="num">${sum('expected')}</b><span>Reports you still owe</span></div>
@@ -956,7 +993,7 @@ async function firmModal(tab) {
     <p class="err" id="ivErr" hidden></p><div><button class="btn primary" type="submit">Send invitation</button></div></form>` : '';
   openModal(`${modalHead(admin ? 'Firm settings and team' : 'Your firm’s team')}<div class="modal-b">${settings}
     <h3 style="margin-top:6px">Team</h3><div class="people">${members}</div>${invite}
-    ${admin ? '<div><button class="btn small" data-act="firm-log">Firm activity log</button></div><div id="firmLog"></div>' : ''}</div>`);
+    ${admin ? `<div class="dr-actions"><button class="btn small" data-act="firm-log">Firm activity log</button>${S.firmInfo?.plan && S.firmInfo.plan !== 'internal' ? '<button class="btn small" data-act="billing">Subscription</button>' : ''}</div><div id="firmLog"></div>` : ''}</div>`);
   if (tab === 'team') $('#iv-email')?.focus();
 }
 function memberFields(p, m) {
@@ -1079,6 +1116,13 @@ document.addEventListener('submit', async (e) => {
       if (ok) { closeModal(); toast('Client closed. Their access has ended.'); await refresh(); }
       return;
     }
+    if (f.id === 'signupForm') {
+      const body = { firmName: $('#su-firm').value.trim(), country: $('#su-country').value, name: $('#su-name').value.trim(), email: $('#su-email').value.trim() };
+      if (!body.firmName || !body.email) return showErr('#suErr', 'Enter the firm’s name and your email.');
+      const done = busy(f.querySelector('button[type=submit]'), 'Starting…');
+      try { await api('/signup', { method: 'POST', body }); renderSignup(body.email); } catch (err) { showErr('#suErr', err.message); done(); }
+      return;
+    }
     if (f.id === 'inviteForm') {
       const body = { name: $('#iv-name').value.trim(), email: $('#iv-email').value.trim(), ...memberValues('iv') };
       const ok = await api('/firm/team', { method: 'POST', body }).then(() => true, (err) => { showErr('#ivErr', err.message); return false; });
@@ -1136,7 +1180,7 @@ document.addEventListener('click', async (e) => {
     case 'close-drawer': go(S.route.c); break;
     case 'close-modal': closeModal(); break;
     case 'logout': await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); break;
-    case 'login-again': renderLogin(); break;
+    case 'login-again': history.replaceState(null, '', '#/'); renderLogin(); break;
     case 'opened-file': setTimeout(refresh, 1500); break;
     case 'confirm': await act(`/items/${it.id}/confirm`, {}, it.kind === 'report' ? 'Report approved. Your accountant has been notified.' : 'Receipt confirmed. The sender has been notified.'); break;
     case 'changes': {
@@ -1162,6 +1206,9 @@ document.addEventListener('click', async (e) => {
     case 'edit-client': clientModal(true); break;
     case 'firm-settings': firmModal(); break;
     case 'account': accountModal(); break;
+    case 'signup': history.replaceState(null, '', '#/signup'); renderSignup(); break;
+    case 'billing': billingModal(); break;
+    case 'checkout': case 'portal': try { const r = await api(`/billing/${b.dataset.act}`, { method: 'POST', body: {} }); location.href = r.url; } catch (err) { toast(err.message); } break;
     case 'sel-toggle': { const f = filtState(b.dataset.key); f.selecting = !f.selecting; f.picked.clear(); renderData(); break; }
     case 'sel-all': { const k = b.dataset.key; applyFilter(k, S.lists[k].items).forEach((i) => filtState(k).picked.add(i.id)); redrawList(k); break; }
     case 'bulk-zip': {
@@ -1260,10 +1307,11 @@ setInterval(poll, 20000);
     S.me = me.user; S.firm = me.firm; S.companies = me.companies; S.firmInfo = me.firmInfo; S.countries = me.countries || [];
     if (me.user.mfa?.pending) return renderMfaCode();
     if (me.user.mfa?.setupRequired) return renderMfaSetupRequired();
+    if (location.hash.startsWith('#/billing')) { if (location.hash === '#/billing/done') toast('Thank you. Your subscription is being activated.'); history.replaceState(null, '', '#/'); }
     if (S.firmInfo) TZ = COUNTRY(S.firmInfo.country).tz;
     renderShell();
     await route();
   } catch (err) {
-    if (err.status === 401) renderLogin(); else $('#view').innerHTML = `<p class="loading">${esc(err.message)}</p>`;
+    if (err.status === 401) { if (location.hash.startsWith('#/signup')) renderSignup(); else renderLogin(); } else $('#view').innerHTML = `<p class="loading">${esc(err.message)}</p>`;
   }
 })();
