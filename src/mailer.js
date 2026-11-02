@@ -54,7 +54,9 @@ async function deliver(m) {
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Postmark-Server-Token': config.mail.postmarkToken },
       body: JSON.stringify({
         From: config.mail.from, To: m.to_email, Subject: m.subject, HtmlBody: m.html, TextBody: m.body_text,
-        MessageStream: config.mail.postmarkStream, Metadata: { email_id: m.id }, TrackOpens: true,
+        MessageStream: config.mail.postmarkStream,
+        // operator emails are not in the database: no id for webhooks to look up, no open tracking
+        ...(m.direct ? { TrackOpens: false } : { Metadata: { email_id: m.id }, TrackOpens: true }),
       }),
     });
     const out = await res.json().catch(() => ({}));
@@ -87,7 +89,7 @@ async function logEmailEvent(client, m, type, text, data = {}, { once = false } 
 /** Send one email right away, without the queue or the log (operator alerts). */
 export async function sendDirect(to, subject, text) {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  return deliver({ id: `direct-${Date.now()}`, to_email: to, subject, body_text: text, html: `<pre style="font:12px/1.5 monospace;white-space:pre-wrap">${esc(text)}</pre>` });
+  return deliver({ id: `direct-${Date.now()}`, direct: true, to_email: to, subject, body_text: text, html: `<pre style="font:12px/1.5 monospace;white-space:pre-wrap">${esc(text)}</pre>` });
 }
 
 let flushing = null;
@@ -137,8 +139,9 @@ const WEBHOOK_STATUS = {
 /** Postmark webhook payload → status update and log entry. */
 export async function handlePostmarkWebhook(p) {
   const rule = WEBHOOK_STATUS[p.RecordType];
-  const emailId = p.Metadata?.email_id;
-  if (!rule || !emailId) return false;
+  const emailId = String(p.Metadata?.email_id || '');
+  // only our queued emails carry a database id; anything else (older operator emails) is ignored
+  if (!rule || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emailId)) return false;
   const [status, type, text] = rule;
   return tx(async (c) => {
     const { rows: [m] } = await c.query('select * from email_messages where id = $1 for update', [emailId]);

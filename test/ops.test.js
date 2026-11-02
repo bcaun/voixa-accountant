@@ -22,6 +22,25 @@ test('alerts are emailed once per kind per 15 minutes, counting the ones held ba
   assert.match(mails[0].subject, /^\[Pescada\] Server error/);
 });
 
+test('a fault that keeps recurring is emailed less and less often', async () => {
+  sentMail.length = 0;
+  const t0 = Date.parse('2026-11-02T00:00:00Z'), min = 6e4;
+  let sent = 0;
+  for (let m = 0; m <= 8 * 60; m += 5) if (await alert('Recurring fault', 'same', t0 + m * min)) sent++;
+  // at 0, 15 min, then 1 h later, then 6 h later: 4 emails in 8 hours instead of 32
+  assert.equal(sent, 4);
+  assert.match(sentMail.at(-1).body_text, /more of these since the last email/);
+  assert.equal(await alert('Recurring fault', 'same', t0 + 9 * 60 * min), false, 'now once a day');
+  assert.equal(await alert('Recurring fault', 'back', t0 + 9 * 60 * min + 25 * 60 * min), true, 'after a quiet day, at once');
+});
+
+test('Postmark events for operator emails are ignored instead of failing', async () => {
+  await migrate();
+  const { handlePostmarkWebhook } = await import('../src/mailer.js');
+  assert.equal(await handlePostmarkWebhook({ RecordType: 'Delivery', Metadata: { email_id: 'direct-1793589339508' } }), false);
+  assert.equal(await handlePostmarkWebhook({ RecordType: 'Open', Metadata: { email_id: '00000000-0000-0000-0000-000000000000' } }), false);
+});
+
 test('the deep health check needs the token and reports mail, jobs and scanner', async () => {
   await migrate();
   const server = createApp().listen(0);
