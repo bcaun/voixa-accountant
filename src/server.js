@@ -101,6 +101,15 @@ export function createApp() {
     res.redirect(303, r ? `/#/c/${r.companyId}?bank=${r.ok ? 'ok' : 'failed'}` : '/');
   });
 
+  // Firms' logos, shown in their clients' emails and spaces. The address is a random key.
+  app.get('/logos/:key', async (req, res) => {
+    if (!/^[0-9a-f]{32}$/.test(req.params.key)) return res.status(404).end();
+    const { rows: [f] } = await pool.query('select logo, logo_type from firms where logo_key = $1', [req.params.key]);
+    if (!f?.logo) return res.status(404).end();
+    res.set({ 'Content-Type': f.logo_type, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+    res.send(f.logo);
+  });
+
   // Sign-in links open a page with a button instead of signing in on GET, so
   // mail scanners that pre-fetch links cannot use up the token.
   const pageLang = (req) => req.acceptsLanguages(...PAGE_LANGS) || 'en';

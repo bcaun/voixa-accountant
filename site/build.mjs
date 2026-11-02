@@ -14,19 +14,19 @@ const SITE = 'https://pescada.io';
 export const LANGS = ['en', 'es', 'it', 'fr', 'de', 'pt'];
 const LANG_NAMES = { en: 'English', es: 'Español', it: 'Italiano', fr: 'Français', de: 'Deutsch', pt: 'Português' };
 const UI = {
-  en: { product: 'Product', security: 'Security', legal: 'Legal', news: 'News', signin: 'Client sign in', demo: 'Request a demo', language: 'Language',
+  en: { product: 'Product', pricing: 'Pricing', security: 'Security', legal: 'Legal', news: 'News', signin: 'Client sign in', demo: 'Request a demo', language: 'Language',
     legalNav: 'Legal', draft: `Draft version ${company.legalVersion}, pending review by our lawyers. The final text may change.`,
     updated: 'Last updated', operated: 'Operated by', singleMember: 'single-member company', footer: 'Tracked document exchange for accounting firms.' },
-  es: { product: 'Producto', security: 'Seguridad', legal: 'Legal', news: 'Noticias', signin: 'Acceso clientes', demo: 'Solicitar una demo', language: 'Idioma',
+  es: { product: 'Producto', pricing: 'Precios', security: 'Seguridad', legal: 'Legal', news: 'Noticias', signin: 'Acceso clientes', demo: 'Solicitar una demo', language: 'Idioma',
     legalNav: 'Legal', draft: `Versión borrador ${company.legalVersion}, pendiente de revisión por nuestros abogados. El texto final puede cambiar.`,
     updated: 'Última actualización', operated: 'Un servicio de', singleMember: 'sociedad unipersonal', footer: 'Intercambio de documentos con trazabilidad para asesorías y despachos contables.' },
-  it: { product: 'Prodotto', security: 'Sicurezza', legal: 'Legale', news: 'Notizie', signin: 'Accesso clienti', demo: 'Richiedi una demo', language: 'Lingua',
+  it: { product: 'Prodotto', pricing: 'Prezzi', security: 'Sicurezza', legal: 'Legale', news: 'Notizie', signin: 'Accesso clienti', demo: 'Richiedi una demo', language: 'Lingua',
     legalNav: 'Legale', updated: 'Ultimo aggiornamento', operated: 'Un servizio di', singleMember: 'società unipersonale', footer: 'Scambio di documenti tracciato per studi contabili.' },
-  fr: { product: 'Produit', security: 'Sécurité', legal: 'Juridique', news: 'Actualités', signin: 'Espace clients', demo: 'Demander une démo', language: 'Langue',
+  fr: { product: 'Produit', pricing: 'Tarifs', security: 'Sécurité', legal: 'Juridique', news: 'Actualités', signin: 'Espace clients', demo: 'Demander une démo', language: 'Langue',
     legalNav: 'Juridique', updated: 'Dernière mise à jour', operated: 'Un service de', singleMember: 'société unipersonnelle', footer: 'Échange de documents tracé pour les cabinets comptables.' },
-  de: { product: 'Produkt', security: 'Sicherheit', legal: 'Rechtliches', news: 'Neuigkeiten', signin: 'Mandanten-Login', demo: 'Demo anfragen', language: 'Sprache',
+  de: { product: 'Produkt', pricing: 'Preise', security: 'Sicherheit', legal: 'Rechtliches', news: 'Neuigkeiten', signin: 'Mandanten-Login', demo: 'Demo anfragen', language: 'Sprache',
     legalNav: 'Rechtliches', updated: 'Zuletzt aktualisiert', operated: 'Ein Angebot der', singleMember: 'Einpersonengesellschaft', footer: 'Nachverfolgbarer Dokumentenaustausch für Steuerkanzleien.' },
-  pt: { product: 'Produto', security: 'Segurança', legal: 'Legal', news: 'Notícias', signin: 'Acesso clientes', demo: 'Pedir uma demo', language: 'Idioma',
+  pt: { product: 'Produto', pricing: 'Preços', security: 'Segurança', legal: 'Legal', news: 'Notícias', signin: 'Acesso clientes', demo: 'Pedir uma demo', language: 'Idioma',
     legalNav: 'Legal', updated: 'Última atualização', operated: 'Um serviço de', singleMember: 'sociedade unipessoal', footer: 'Troca de documentos com rastreabilidade para gabinetes de contabilidade.' },
 };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -47,6 +47,7 @@ function layout(page, all) {
   }).join('');
   const nav = `<nav class="nav" aria-label="Main">
       <a class="hide-s" href="${home}#product">${t.product}</a>
+      <a class="hide-s" href="${pageIn(all, 'pricing', lang).path}"${page.key === 'pricing' ? ' aria-current="page"' : ''}>${t.pricing}</a>
       <a class="hide-s" href="${pageIn(all, 'security', lang).path}">${t.security}</a>
       <a class="hide-s" href="${newsHome}">${t.news}</a>
       <a class="hide-s" href="${legalPages[0].path}">${t.legal}</a>

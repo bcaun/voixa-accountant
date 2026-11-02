@@ -1,5 +1,8 @@
 // German email texts (keys are the English originals).
 export default {
+  'This address already uses Pescada': 'Diese Adresse nutzt Pescada bereits',
+  'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Jemand, wahrscheinlich Sie, wollte mit {email} eine Kanzlei auf Pescada eröffnen. Diese Adresse erhält bereits als Mandant Dokumente von einer Kanzlei, daher kann mit ihr keine Kanzlei eröffnet werden.',
+  'To open your firm, sign up again with another address, for example your firm’s own. To reach your documents as a client, use the button below.': 'Um Ihre Kanzlei zu eröffnen, registrieren Sie sich erneut mit einer anderen Adresse, zum Beispiel der Ihrer Kanzlei. Um als Mandant auf Ihre Dokumente zuzugreifen, nutzen Sie die Schaltfläche unten.',
   'Confirm your email to start with Pescada': 'Bestätigen Sie Ihre E-Mail, um mit Pescada zu starten',
   'Use the button below to create the {firm} space on Pescada and sign in. The link works once and expires in 24 hours.': 'Mit der Schaltfläche unten legen Sie den Bereich von {firm} auf Pescada an und melden sich an. Der Link funktioniert einmal und läuft in 24 Stunden ab.',
   'Confirm and sign in': 'Bestätigen und anmelden',

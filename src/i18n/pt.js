@@ -1,5 +1,8 @@
 // European Portuguese email texts (keys are the English originals).
 export default {
+  'This address already uses Pescada': 'Este endereço já usa o Pescada',
+  'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Alguém, provavelmente você, pediu para abrir um gabinete de contabilidade no Pescada com {email}. Este endereço já recebe documentos de um gabinete como cliente, por isso não é possível abrir um gabinete com ele.',
+  'To open your firm, sign up again with another address, for example your firm’s own. To reach your documents as a client, use the button below.': 'Para abrir o seu gabinete, registe-se novamente com outro endereço, por exemplo o do gabinete. Para aceder aos seus documentos como cliente, use o botão abaixo.',
   'Confirm your email to start with Pescada': 'Confirme o seu email para começar no Pescada',
   'Use the button below to create the {firm} space on Pescada and sign in. The link works once and expires in 24 hours.': 'Use o botão abaixo para criar o espaço de {firm} no Pescada e entrar. A ligação funciona uma vez e expira em 24 horas.',
   'Confirm and sign in': 'Confirmar e entrar',

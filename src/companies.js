@@ -1,5 +1,5 @@
 // Client workspaces, the people in them, and recurring obligations.
-import { checkTrialClients } from './billing.js';
+import { checkTrialClients, firmLogoUrl } from './billing.js';
 import { appendEvent } from './ledger.js';
 import { HttpError, actorOf, sendLoginLink, COMPANY_SQL } from './auth.js';
 import { dueAfter, fmtDay } from './dates.js';
@@ -66,7 +66,9 @@ export async function addMember(c, { user, company, email, name }) {
   else await c.query('insert into memberships (company_id, user_id, added_by) values ($1,$2,$3)', [company.id, u.id, user.id]);
   await appendEvent(c, { companyId: company.id, actor: actorOf(user), type: 'member_added',
     text: `${actorOf(user).name} gave ${u.name || email} (${email}) access to the workspace`, data: { user_id: u.id, email } });
-  await sendLoginLink(c, u, { invitedBy: actorOf(user).name, companyName: company.name, companyId: company.id, firmName: company.firm_name });
+  const logoUrl = firmLogoUrl(company);
+  await sendLoginLink(c, u, { invitedBy: actorOf(user).name, companyName: company.name, companyId: company.id, firmName: company.firm_name,
+    logo: logoUrl && { url: logoUrl, alt: company.firm_name } });
   return u;
 }
 

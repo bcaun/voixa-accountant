@@ -4,7 +4,7 @@
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import { config } from './config.js';
 import { pool, query, tx } from './db.js';
-import { HttpError, sendLoginLink } from './auth.js';
+import { HttpError, sendLoginLink, createLoginLink } from './auth.js';
 import { firmEvent } from './audit.js';
 import { isCountry } from './countries.js';
 import { isDisposable } from './disposable.js';
@@ -25,6 +25,8 @@ export const proIncluded = (f) => !f || f.tier === 'pro' || f.plan === 'trial';
 export const aiReadingAllowed = proIncluded;
 /** The same for a company row from COMPANY_SQL, which carries its firm's plan. */
 export const companyHasPro = (co) => proIncluded({ tier: co.firm_tier, plan: co.firm_plan });
+/** The firm's logo for a company's emails and pages: only while the firm is on Pro (or trying it). */
+export const firmLogoUrl = (co) => (co?.firm_logo_key && companyHasPro(co) ? `${config.appUrl}/logos/${co.firm_logo_key}` : null);
 export function requirePro(co, what) {
   if (!companyHasPro(co)) throw Object.assign(new HttpError(403, `${what} is part of the Pro plan.`), { code: 'pro' });
 }
@@ -70,7 +72,8 @@ export async function signUp({ firmName, country, name, email, website, ms, ip =
     const { rows: [existing] } = await c.query('select * from users where email = $1', [email]);
     if (existing) {
       // same answer as for a new address, so the form does not reveal who uses Pescada
-      if (!existing.disabled_at) await sendLoginLink(c, existing);
+      if (existing.disabled_at) { /* nothing */ } else if (existing.role === 'client') await explainClientAddress(c, existing, country);
+      else await sendLoginLink(c, existing);
       await c.query(`insert into signup_requests (token_hash, firm_name, country, name, email, ip, expires_at, used_at) values ($1,$2,$3,$4,$5,$6, now(), now())`,
         [sha256(randomBytes(32).toString('base64url')), firmName, country, name || '', email, ip]);
       return { existing: true };
@@ -90,6 +93,21 @@ export async function signUp({ firmName, country, name, email, website, ms, ip =
     await queueEmail(c, { toEmail: email, kind: 'signup', subject: heading, html, text });
     return { requested: true };
   });
+}
+
+/** A client's address was used to sign a firm up: tell its owner why no firm was created. */
+async function explainClientAddress(c, user, country) {
+  const t = translator(langFor(user, country));
+  const heading = t('This address already uses Pescada');
+  const { html, text } = renderEmail({
+    heading,
+    lines: [t('Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.', { email: user.email }),
+      t('To open your firm, sign up again with another address, for example your firm’s own. To reach your documents as a client, use the button below.'),
+      t('If you did not ask for this, ignore this email.')],
+    button: { label: t('Sign in'), url: await createLoginLink(user.id, c) },
+    footer: t('Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.'),
+  });
+  await queueEmail(c, { toUserId: user.id, toEmail: user.email, kind: 'login', subject: heading, html, text });
 }
 
 /** The sign-up link was opened: create the trial firm and its administrator. Returns the user, or null. */

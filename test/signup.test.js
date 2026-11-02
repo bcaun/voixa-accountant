@@ -89,6 +89,41 @@ test('a trial firm has a limited number of clients and invitations a day', async
   assert.ok(f.id);
 });
 
+test('a client’s address cannot open a firm; its owner is told why, in their language', async () => {
+  sentMail.length = 0;
+  assert.equal((await signup({ ...person, email: 'a@uno.it', ms: 5000 })).status, 200);
+  await flushEmails();
+  const [m] = sentMail.filter((x) => x.to_email === 'a@uno.it');
+  assert.equal(m.subject, 'Questo indirizzo usa già Pescada');
+  assert.match(m.body_text, /token=/, 'with a sign-in link to their client space');
+  await pool.query(`delete from signup_requests where email = 'a@uno.it'`); // keep the limits below exact
+});
+
+test('a Pro firm’s logo appears in its clients’ emails and spaces; Essential firms are offered Pro', async () => {
+  const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(64, 1)]);
+  const put = (body, type = 'image/png') => fetch(`${base}/api/firm/logo`, { method: 'PUT', headers: { cookie: ctx.cookie, 'X-Voixa': '1', 'Content-Type': type }, body });
+  await pool.query(`update firms set tier = 'essential'`);
+  let r = await put(png);
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).code, 'pro');
+  await pool.query(`update firms set tier = 'pro'`);
+  assert.equal((await put(Buffer.from('<svg onload=alert(1)>'), 'image/svg+xml')).status, 400, 'no SVG');
+  r = await put(png);
+  assert.equal(r.status, 200);
+  const { logoUrl } = await r.json();
+  const img = await fetch(`${base}${logoUrl}`);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.equal(Buffer.from(await img.arrayBuffer()).length, png.length);
+  sentMail.length = 0;
+  const co = (await as('GET', '/me')).companies[0].id;
+  await as('POST', `/companies/${co}/members`, { email: 'f@uno.it' }, 201);
+  await flushEmails();
+  assert.ok(sentMail.find((x) => x.to_email === 'f@uno.it').html.includes(logoUrl), 'the invitation shows the logo');
+  assert.equal((await as('GET', `/companies/${co}`)).company.firm_logo, logoUrl);
+  await as('DELETE', '/firm/logo');
+  assert.equal((await fetch(`${base}${logoUrl}`)).status, 404);
+});
+
 test('the same address cannot be flooded, and there is a daily ceiling for everyone', async () => {
   sentMail.length = 0;
   for (let i = 0; i < 4; i++) assert.equal((await signup({ ...person, email: 'luca@rossi.it', ms: 5000 })).status, 200);

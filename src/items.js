@@ -1,6 +1,7 @@
 // Everything that happens to a document, report or request. Each operation runs
 // inside the caller's transaction, writes its evidence events, refreshes the
 // item's cached status and queues the notification emails.
+import { firmLogoUrl } from './billing.js';
 import { config } from './config.js';
 import { appendEvent } from './ledger.js';
 import { queueEmail, renderEmail } from './mailer.js';
@@ -95,7 +96,8 @@ export async function notify(c, { company, item, side, kind, msg, exceptUserId }
         [u.id, company.id, item?.id ?? null, kind, subject, lines[0] || heading]);
       continue;
     }
-    const { html, text } = renderEmail({ heading, lines, button: { label: item ? t('Open in Pescada') : t('Open the workspace'), url },
+    const logoUrl = u.role === 'client' ? firmLogoUrl(company) : null;
+    const { html, text } = renderEmail({ heading, lines, button: { label: item ? t('Open in Pescada') : t('Open the workspace'), url }, logo: logoUrl && { url: logoUrl, alt: company.firm_name },
       footer: t('{firm} · Pescada. This message and every action on the document are recorded in the workspace log.', { firm: company.firm_name }) });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });
   }

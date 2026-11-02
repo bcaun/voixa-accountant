@@ -550,7 +550,7 @@ function tabs(key, defs) {
 function renderClient() {
   const w = S.ws; if (!w) return;
   const c = w.company;
-  $('#hello').innerHTML = `<div><h1>${esc(c.name)}</h1><p class="sub">${t('Client #{no}', { no: c.no })}${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · ${esc(countryName(c.country))} · ${t('Accountant: {firm}', { firm: esc(w.firm) })}</p></div>
+  $('#hello').innerHTML = `<div>${c.firm_logo ? `<img class="firm-logo" src="${esc(c.firm_logo)}" alt="${esc(w.firm)}">` : ''}<h1>${esc(c.name)}</h1><p class="sub">${t('Client #{no}', { no: c.no })}${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · ${esc(countryName(c.country))} · ${t('Accountant: {firm}', { firm: esc(w.firm) })}</p></div>
     <span class="private"><i></i>${t('Private workspace. Other clients of {firm} cannot see it.', { firm: esc(w.firm) })}</span>${tipsCard(c)}`;
   const ei = $('#emailIn');
   if (ei && c.inbound_address) { ei.hidden = false; ei.innerHTML = t('Or email attachments to {address} from your own address.', { address: `<b class="mono" style="font-size:13px">${esc(c.inbound_address)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(c.inbound_address)}">${t('Copy')}</button>` }); }
@@ -758,7 +758,11 @@ function bankView() {
   const count = (k) => r.transactions.filter((tx) => status(tx) === k).length;
   const stItems = statements.map((e) => { const it = item(e.item_id); return `<div class="ob"><span class="ico sky" aria-hidden="true">BNK</span><span class="rm"><span class="rt"><a href="#/c/${S.route.c}/i/${e.item_id}" style="color:inherit">${esc(it?.title || t('Statement'))}</a></span><span class="rs">${e.status === 'done' ? statementSummary(e) : esc(e.error || '')}</span></span><span class="pill ${e.status === 'done' ? 'ok' : 'bad'}">${e.status === 'done' ? t('Read') : t('Not read')}</span></div>`; }).join('');
   const invs = r.invoices.length;
-  const note = S.me.role === 'accountant'
+  const note = !S.ws.company.pro
+    ? (S.me.role === 'accountant'
+      ? t('Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly. On the Pro plan other PDFs and photos are read by AI too; on Essential they are kept but not read. Payments are matched to invoices by invoice number, amount, counterparty and date; you confirm each match.')
+      : t('Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly. Payments are matched to invoices by invoice number, amount, counterparty and date; your accountant confirms each match.'))
+    : S.me.role === 'accountant'
     ? t('Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; you confirm each match.')
     : t('Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; your accountant confirms each match.');
   return `<p class="note">${note}</p>
@@ -1111,7 +1115,15 @@ async function firmModal(tab) {
     <div class="field"><label for="fm-country">${t('Country')}</label><select id="fm-country" class="input">${countryOptions(S.firmInfo?.country)}</select></div>
     <p class="sub" style="font-size:13px">${t('Clients see the firm name in every email. The country is the default for new clients; each client keeps its own country.')}</p>
     <label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="fm-mfa" ${S.firmInfo?.require_mfa ? 'checked' : ''} style="margin-top:4px"><span>${t('Require two-step sign-in for every accountant of the firm')}</span></label>
-    <p class="err" id="fmErr" hidden></p><div><button class="btn primary" type="submit">${t('Save')}</button></div></form>` : '';
+    <p class="err" id="fmErr" hidden></p><div><button class="btn primary" type="submit">${t('Save')}</button></div></form>
+    <div class="inline-form" style="margin-top:12px"><h3>${t('Firm logo')}${S.firmInfo?.pro ? '' : proPill()}</h3>
+      ${S.firmInfo?.pro
+        ? `${S.firmInfo.logoUrl ? `<img class="firm-logo" src="${esc(S.firmInfo.logoUrl)}" alt="${esc(S.firm)}">` : `<p class="sub">${t('No logo yet.')}</p>`}
+          <p class="sub" style="font-size:13px">${t('Shown on emails to your clients and in their spaces. PNG or JPEG, up to 300 KB; a wide logo on a white or transparent background works best.')}</p>
+          <p class="err" id="lgErr" hidden></p>
+          <div class="dr-actions"><label class="btn small" style="cursor:pointer">${S.firmInfo.logoUrl ? t('Replace the logo') : t('Upload a logo')}<input type="file" id="fm-logo" accept="image/png,image/jpeg" hidden></label>${S.firmInfo.logoUrl ? `<button type="button" class="btn small" data-act="logo-remove">${t('Remove')}</button>` : ''}</div>`
+        : `<p class="sub" style="font-size:13px">${t('With Pro, your logo appears on emails to your clients and in their spaces.')}</p><div><button type="button" class="btn small" data-act="pro-feature" data-what="${esc(t('Firm logo'))}">${t('See what Pro adds')}</button></div>`}
+    </div>` : '';
   const invite = admin ? `<form id="inviteForm" class="inline-form" novalidate><h3>${t('Invite a colleague')}</h3>
     <div class="grid2"><div class="field"><label for="iv-name">${t('Name')}</label><input id="iv-name" class="input"></div><div class="field"><label for="iv-email">${t('Email')}</label><input id="iv-email" class="input" type="email"></div></div>
     ${memberFields('iv', { firm_role: 'staff', all_clients: true, company_ids: [] })}
@@ -1120,6 +1132,18 @@ async function firmModal(tab) {
     <h3 style="margin-top:6px">${t('Team')}</h3><div class="people">${members}</div>${invite}
     ${admin ? `<div class="dr-actions"><button class="btn small" data-act="firm-log">${t('Firm activity log')}</button>${S.firmInfo?.plan && S.firmInfo.plan !== 'internal' ? `<button class="btn small" data-act="billing">${t('Subscription')}</button>` : ''}</div><div id="firmLog"></div>` : ''}</div>`);
   if (tab === 'team') $('#iv-email')?.focus();
+  $('#fm-logo')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 300 * 1024) return showErr('#lgErr', t('Upload the logo as a PNG or JPEG file, up to 300 KB.'));
+    try {
+      const r = await fetch('/api/firm/logo', { method: 'PUT', headers: { 'X-Voixa': '1', 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || t('Something went wrong. Try again.'));
+      S.firmInfo = { ...S.firmInfo, logoUrl: data.logoUrl };
+      toast(t('Logo saved.')); firmModal();
+    } catch (err) { showErr('#lgErr', t(err.message)); }
+  });
 }
 function memberFields(p, m) {
   const cos = S.overview?.companies || S.companies || [];
@@ -1365,6 +1389,7 @@ document.addEventListener('click', async (e) => {
     case 'close-client': closeClientModal(); break;
     case 'acc-export': exportModal(); break;
     case 'pro-feature': proModal(b.dataset.what || ''); break;
+    case 'logo-remove': try { await api('/firm/logo', { method: 'DELETE' }); S.firmInfo = { ...S.firmInfo, logoUrl: null }; toast(t('Logo removed.')); firmModal(); } catch (err) { toast(err.message); } break;
     case 'bank-connect': bankConnectModal(); break;
     case 'bank-remove': if (confirm(t('Disconnect this bank? Statements already fetched stay.'))) { try { await api(`/companies/${S.route.c}/bank/${b.dataset.id}`, { method: 'DELETE' }); S.bank = null; toast(t('Bank disconnected.')); renderData(); } catch (err) { toast(err.message); } } break;
     case 'reopen-client': if (confirm(t('Reopen this client? Their people can sign in again.'))) await act(`/companies/${S.route.c}/reopen`, {}, t('Client reopened.')); break;

@@ -17,7 +17,7 @@ export async function createLoginLink(userId, db = { query }) {
   return `${config.appUrl}/auth/verify?token=${token}`;
 }
 
-export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName, team } = {}) {
+export async function sendLoginLink(client, user, { invitedBy, companyName, companyId, firmName, team, logo } = {}) {
   // invitations count against a trial firm's daily allowance
   if (invitedBy) {
     const firmId = team ? user.firm_id
@@ -42,7 +42,7 @@ export async function sendLoginLink(client, user, { invitedBy, companyName, comp
       : [t('Use the button below to sign in. The link works once and expires in {mins} minutes.', { mins }), t('If you did not ask for this, ignore this email.')];
   const footer = firmName ? t('{firm} · Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.', { firm: firmName })
     : t('Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.');
-  const { html, text } = renderEmail({ heading, lines, button: { label: t('Sign in'), url }, footer });
+  const { html, text } = renderEmail({ heading, lines, button: { label: t('Sign in'), url }, footer, logo });
   await queueEmail(client, { companyId, toUserId: user.id, toEmail: user.email, kind: invitedBy ? 'invite' : 'login', subject: heading, html, text });
 }
 
@@ -133,7 +133,7 @@ export const actorOf = (user) => ({ type: user.role, id: user.id, name: user.nam
 export const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v));
 
 /** A company row with its firm's name and country, as every module expects it. */
-export const COMPANY_SQL = 'select c.*, f.name as firm_name, f.country as firm_country, f.plan as firm_plan, f.tier as firm_tier from companies c join firms f on f.id = c.firm_id';
+export const COMPANY_SQL = 'select c.*, f.name as firm_name, f.country as firm_country, f.plan as firm_plan, f.tier as firm_tier, f.logo_key as firm_logo_key from companies c join firms f on f.id = c.firm_id';
 
 /** Accountants reach only their own firm's clients; client users only the companies they are members of. */
 /**

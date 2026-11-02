@@ -12,12 +12,15 @@ export const sentMail = []; // filled by the "memory" transport, used in tests
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function renderEmail({ heading, lines = [], button, footer }) {
+export function renderEmail({ heading, lines = [], button, footer, logo }) {
   const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || 'Pescada'].join('\n');
   const html = `<!doctype html><html><body style="margin:0;background:#F4F9FA;font-family:'Schibsted Grotesk',Helvetica,Arial,sans-serif;color:#0B2B3F">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F9FA;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #CFE2EC;border-radius:24px">
-<tr><td style="padding:26px 32px 0"><span style="font:700 24px/1 'Familjen Grotesk',Helvetica,Arial,sans-serif;letter-spacing:-.03em;color:#0B2B3F">pescada</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#F5B730;vertical-align:top;margin-left:2px"></span></td></tr>
+<tr><td style="padding:26px 32px 0">${logo
+    // the firm's own logo, with Pescada named small beside it
+    ? `<img src="${esc(logo.url)}" alt="${esc(logo.alt)}" height="40" style="display:inline-block;height:40px;max-width:220px;vertical-align:middle;border:0"><span style="font-size:12px;color:#3F6478;vertical-align:middle;margin-left:12px">via pescada</span>`
+    : `<span style="font:700 24px/1 'Familjen Grotesk',Helvetica,Arial,sans-serif;letter-spacing:-.03em;color:#0B2B3F">pescada</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#F5B730;vertical-align:top;margin-left:2px"></span>`}</td></tr>
 <tr><td style="padding:20px 32px 10px"><h1 style="margin:0 0 14px;font:700 24px/1.2 'Familjen Grotesk',Helvetica,Arial,sans-serif;letter-spacing:-.02em;color:#0B2B3F">${esc(heading)}</h1>
 ${lines.map((l) => `<p style="margin:0 0 10px;font-size:15px;line-height:1.55;color:#23445A">${esc(l)}</p>`).join('')}
 ${button ? `<p style="margin:22px 0 8px"><a href="${esc(button.url)}" style="display:inline-block;background:#1A5DB4;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;padding:13px 26px;border-radius:999px">${esc(button.label)}</a></p>` : ''}

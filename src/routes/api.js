@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
@@ -8,7 +9,7 @@ import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { accountingExport, exportKinds } from '../exports.js';
-import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft, aiReadingAllowed, companyHasPro, requirePro } from '../billing.js';
+import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft, aiReadingAllowed, companyHasPro, requirePro, firmLogoUrl } from '../billing.js';
 import { feedsOn, institutions, connect as connectBank, removeConnection } from '../bankfeeds.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
@@ -114,11 +115,12 @@ api.get('/me', async (req, res) => {
   }
   const { rows } = u.role === 'accountant'
     ? await query('select id, no, name, nif, city, country, closed_at, export_until from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [u.firm_id, u.id])
-    : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
+    : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name,
+                     case when f.logo_key is not null and (f.tier = 'pro' or f.plan = 'trial') then '/logos/' || f.logo_key end as firm_logo from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
-  const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, tier, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
-  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn(), aiReading: aiReadingAllowed(firm), pro: aiReadingAllowed(firm) });
+  const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, tier, trial_ends_at, logo_key from firms where id = $1', [u.firm_id])).rows[0] : null;
+  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn(), aiReading: aiReadingAllowed(firm), pro: aiReadingAllowed(firm), logoUrl: firm.logo_key ? `/logos/${firm.logo_key}` : null });
   const lang = u.lang || langOfCountry(firm?.country || rows[0]?.country);
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, lang, langChosen: u.lang || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
@@ -345,6 +347,29 @@ api.patch('/firm', json, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- firm logo (Pro) ---------- */
+
+// PNG or JPEG only (no SVG, which can carry scripts), up to 300 KB
+const isImage = (b) => (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 ? 'image/png' : b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'image/jpeg' : null);
+api.put('/firm/logo', express.raw({ type: () => true, limit: '300kb' }), async (req, res) => {
+  requireAdmin(req.user);
+  const { rows: [f] } = await query('select plan, tier from firms where id = $1', [req.user.firm_id]);
+  if (!aiReadingAllowed(f)) throw Object.assign(new HttpError(403, 'The firm’s logo is part of the Pro plan.'), { code: 'pro' });
+  const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  const type = buf.length ? isImage(buf) : null;
+  if (!type) throw new HttpError(400, 'Upload the logo as a PNG or JPEG file, up to 300 KB.');
+  const key = randomBytes(16).toString('hex'); // a new address each time, so emails and browsers pick up the change
+  await query('update firms set logo = $2, logo_type = $3, logo_key = $4 where id = $1', [req.user.firm_id, buf, type, key]);
+  await firmEvent({ query }, req.user.firm_id, req.user, 'firm_updated', `${req.user.name || req.user.email} uploaded the firm’s logo`);
+  res.json({ logoUrl: `/logos/${key}` });
+});
+api.delete('/firm/logo', async (req, res) => {
+  requireAdmin(req.user);
+  await query('update firms set logo = null, logo_type = null, logo_key = null where id = $1', [req.user.firm_id]);
+  await firmEvent({ query }, req.user.firm_id, req.user, 'firm_updated', `${req.user.name || req.user.email} removed the firm’s logo`);
+  res.json({ ok: true });
+});
+
 /* ---------- accountant overview ---------- */
 
 api.get('/overview', async (req, res) => {
@@ -449,7 +474,7 @@ async function companyState(user, company, { days = 120 } = {}) {
   const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
-      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at || !companyHasPro(company) ? null : inboundAddress(company), pro: companyHasPro(company),
+      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at || !companyHasPro(company) ? null : inboundAddress(company), pro: companyHasPro(company), firm_logo: firmLogoUrl(company) ? `/logos/${company.firm_logo_key}` : null,
       closed_at: company.closed_at, export_until: company.export_until, purge_after: company.purge_after },
     firm: company.firm_name,
     seq: Number(company.head_seq),
