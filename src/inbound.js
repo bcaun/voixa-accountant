@@ -14,7 +14,7 @@ import { scanStored } from './antivirus.js';
 import { COMPANY_SQL } from './auth.js';
 import { appendEvent, lockCompany } from './ledger.js';
 import { createDocument, SYSTEM } from './items.js';
-import { queueEmail, renderEmail, flushEmails } from './mailer.js';
+import { queueEmail, renderEmail, flushEmails, clientPromo } from './mailer.js';
 import { processJobs } from './recognition/recognize.js';
 import { translator, langFor } from './i18n.js';
 
@@ -81,8 +81,9 @@ export async function handleInbound(p) {
     for (const f of files) {
       await createDocument(c, { user: member, company, file: f, category: guessCategory(subject, f.name), period: '', note, requestId: null });
     }
-    const t = translator(langFor(member, company.country));
-    const { html, text } = renderEmail({ heading: files.length === 1 ? t('Received: 1 document') : t('Received: {n} documents', { n: files.length }),
+    const lang = langFor(member, company.country);
+    const t = translator(lang);
+    const { html, text } = renderEmail({ promo: clientPromo(lang), heading: files.length === 1 ? t('Received: 1 document') : t('Received: {n} documents', { n: files.length }),
       lines: [t('{firm} has received what you sent to the {company} workspace:', { firm: company.firm_name, company: company.name }), ...files.map((f) => `• ${f.name} (SHA-256 ${f.sha256.slice(0, 16)}…)`),
         t('Each file is now in the workspace, and every step is recorded in its log.')],
       button: { label: t('Open the workspace'), url: `${config.appUrl}/#/c/${company.id}` } });

@@ -1,5 +1,6 @@
 // Spanish email texts (keys are the English originals).
 export default {
+  'Sent with Pescada, tracked document exchange for accounting firms.': 'Enviado con Pescada, intercambio de documentos con trazabilidad para asesorías.',
   'This address already uses Pescada': 'Esta dirección ya usa Pescada',
   'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Alguien, probablemente tú, ha pedido abrir una asesoría en Pescada con {email}. Esta dirección ya recibe documentos de una asesoría como cliente, así que no se puede abrir un despacho con ella.',
   'To open your firm, sign up again with another address, for example your firm’s own. To reach your documents as a client, use the button below.': 'Para abrir tu despacho, regístrate de nuevo con otra dirección, por ejemplo la de tu despacho. Para acceder a tus documentos como cliente, usa el botón de abajo.',

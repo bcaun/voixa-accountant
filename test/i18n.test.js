@@ -53,6 +53,7 @@ test('an Italian firm’s client is invited in Italian', async () => {
   assert.equal(invite.subject, 'Giulia ti ha invitato a Bottega Verdi Srl');
   assert.match(invite.body_text, /Ora hai accesso allo spazio di Bottega Verdi Srl/);
   assert.match(invite.html, /Accedi/);
+  assert.match(invite.body_text, /Inviato con Pescada, lo scambio di documenti tracciato per gli studi contabili\. https:\/\/pescada\.io\/it\/\?from=email/, 'clients see a line about Pescada');
   assert.equal((await ctx.acc('GET', '/me')).user.lang, 'it', 'the effective language is reported');
 });
 
@@ -63,6 +64,7 @@ test('notifications to the accountant follow the firm’s country; a chosen lang
   await ctx.cl('POST', `/companies/${ctx.co}/documents`, f, 201);
   await flushEmails();
   assert.match(mailTo('giulia@rossi.it')[0].subject, /^Nuovo documento da Bottega Verdi Srl: /);
+  assert.doesNotMatch(mailTo('giulia@rossi.it')[0].body_text, /from=email/, 'accountants do not');
 
   await ctx.acc('PATCH', '/me', { lang: 'de' });
   const me = await ctx.acc('GET', '/me');

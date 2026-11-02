@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { config } from './config.js';
 import { query } from './db.js';
 import { sha256 } from './ledger.js';
-import { queueEmail, renderEmail, flushEmails } from './mailer.js';
+import { queueEmail, renderEmail, flushEmails, clientPromo } from './mailer.js';
 import { translator, langFor } from './i18n.js';
 import { confirmSignup, checkTrialInvites } from './billing.js';
 
@@ -30,7 +30,8 @@ export async function sendLoginLink(client, user, { invitedBy, companyName, comp
     `select coalesce((select f.country from firms f where f.id = $2), (select co.country from companies co where co.id = $3),
        (select co.country from memberships m join companies co on co.id = m.company_id where m.user_id = $1 order by m.created_at limit 1)) as country`,
     [user.id, user.firm_id || null, companyId || null]);
-  const t = translator(langFor(user, c?.country));
+  const lang = langFor(user, c?.country);
+  const t = translator(lang);
   const mins = config.loginLinkMinutes;
   const heading = invitedBy ? t('{who} invited you to {company}', { who: invitedBy, company: companyName }) : t('Sign in to Pescada');
   const lines = team
@@ -42,7 +43,7 @@ export async function sendLoginLink(client, user, { invitedBy, companyName, comp
       : [t('Use the button below to sign in. The link works once and expires in {mins} minutes.', { mins }), t('If you did not ask for this, ignore this email.')];
   const footer = firmName ? t('{firm} · Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.', { firm: firmName })
     : t('Pescada. Documents you exchange there, and every action on them, are recorded in your workspace log.');
-  const { html, text } = renderEmail({ heading, lines, button: { label: t('Sign in'), url }, footer, logo });
+  const { html, text } = renderEmail({ heading, lines, button: { label: t('Sign in'), url }, footer, logo, promo: user.role === 'client' ? clientPromo(lang) : null });
   await queueEmail(client, { companyId, toUserId: user.id, toEmail: user.email, kind: invitedBy ? 'invite' : 'login', subject: heading, html, text });
 }
 

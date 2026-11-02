@@ -4,6 +4,7 @@
 // company's evidence log, so "it went to spam" can be checked, not argued.
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
+import { tr } from './i18n.js';
 import { pool, tx } from './db.js';
 import { appendEvent, lockCompany } from './ledger.js';
 
@@ -12,8 +13,17 @@ export const sentMail = []; // filled by the "memory" transport, used in tests
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function renderEmail({ heading, lines = [], button, footer, logo }) {
-  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || 'Pescada'].join('\n');
+/**
+ * A short line about Pescada for emails to clients (never to accountants), linking to the site
+ * in the recipient's language: clients who like it can bring it to accountants they know.
+ */
+export function clientPromo(lang) {
+  const path = { es: '/es/', it: '/it/', fr: '/fr/', de: '/de/', pt: '/pt/' }[lang] || '/';
+  return { text: tr(lang, 'Sent with Pescada, tracked document exchange for accounting firms.'), url: `${config.siteUrl}${path}?from=email` };
+}
+
+export function renderEmail({ heading, lines = [], button, footer, logo, promo }) {
+  const text = [heading, '', ...lines, '', button ? `${button.label}: ${button.url}` : '', '', footer || 'Pescada', ...(promo ? ['', `${promo.text} ${promo.url}`] : [])].join('\n');
   const html = `<!doctype html><html><body style="margin:0;background:#F4F9FA;font-family:'Schibsted Grotesk',Helvetica,Arial,sans-serif;color:#0B2B3F">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F9FA;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#FFFFFF;border:1px solid #CFE2EC;border-radius:24px">
@@ -25,7 +35,8 @@ export function renderEmail({ heading, lines = [], button, footer, logo }) {
 ${lines.map((l) => `<p style="margin:0 0 10px;font-size:15px;line-height:1.55;color:#23445A">${esc(l)}</p>`).join('')}
 ${button ? `<p style="margin:22px 0 8px"><a href="${esc(button.url)}" style="display:inline-block;background:#1A5DB4;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;padding:13px 26px;border-radius:999px">${esc(button.label)}</a></p>` : ''}
 </td></tr>
-<tr><td style="padding:16px 32px 24px;font-size:12.5px;line-height:1.5;color:#3F6478;border-top:1px solid #CFE2EC">${esc(footer || 'Pescada. This message and every action on the document are recorded in the workspace log.')}</td></tr>
+<tr><td style="padding:16px 32px 24px;font-size:12.5px;line-height:1.5;color:#3F6478;border-top:1px solid #CFE2EC">${esc(footer || 'Pescada. This message and every action on the document are recorded in the workspace log.')}${promo
+    ? `<br><a href="${esc(promo.url)}" style="color:#3F6478;text-decoration:underline">${esc(promo.text)}</a>` : ''}</td></tr>
 </table></td></tr></table></body></html>`;
   return { html, text };
 }
