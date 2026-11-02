@@ -15,7 +15,19 @@ function validTaxId(country, raw) {
 }
 
 /** A new client workspace in the accountant's firm. The country defaults to the firm's. */
-export async function createCompany(c, { user, name, nif, city, country }) {
+/** Tags group clients inside the firm ("monthly VAT", "restaurants"). Clients never see them. */
+export function cleanTags(raw) {
+  const list = (Array.isArray(raw) ? raw : String(raw || '').split(/[,|]/)).map((x) => String(x).trim().replace(/\s+/g, ' ').slice(0, 40)).filter(Boolean);
+  const seen = new Set();
+  return list.filter((x) => { const k = x.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10);
+}
+export async function setTags(c, { user, company, tags }) {
+  if (user.role !== 'accountant') throw new HttpError(403, 'Only accountants can tag clients.');
+  // kept out of the shared activity log: tags are the firm's own notes
+  await c.query('update companies set tags = $2 where id = $1', [company.id, cleanTags(tags)]);
+}
+
+export async function createCompany(c, { user, name, nif, city, country, tags }) {
   if (user.role !== 'accountant') throw new HttpError(403, 'Only accountants can add clients.');
   if (!name) throw new HttpError(400, 'Enter the company name.');
   const { rows: [firm] } = await c.query('update firms set company_seq = company_seq + 1 where id = $1 returning *', [user.firm_id]);
@@ -25,8 +37,8 @@ export async function createCompany(c, { user, name, nif, city, country }) {
   const cc = country || firm.country;
   const taxId = validTaxId(cc, nif);
   const { rows: [created] } = await c.query(
-    'insert into companies (firm_id, no, name, nif, city, country, created_by) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-    [firm.id, firm.company_seq, name, taxId, city || '', cc, user.id]);
+    'insert into companies (firm_id, no, name, nif, city, country, created_by, tags) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id',
+    [firm.id, firm.company_seq, name, taxId, city || '', cc, user.id, cleanTags(tags)]);
   // someone who sees only assigned clients is assigned the client they create
   if (!user.all_clients) await c.query('insert into company_assignments (company_id, user_id) values ($1, $2)', [created.id, user.id]);
   const { rows: [co] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [created.id]);

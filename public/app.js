@@ -258,6 +258,11 @@ const newest = (a, b) => new Date(b.status.sent_at || b.created_at) - new Date(a
 /* ---------- header ---------- */
 /* ---------- help, support and what is new ---------- */
 const NEWS = [
+  { date: '2026-11-03', items: [
+    'Tag your clients (for example “monthly VAT” or “restaurants”) and filter by tag, also when requesting from several clients.',
+    'A calendar of every client’s deadlines, which you can also add to Google Calendar, Outlook or Apple Calendar.',
+    'Each client shows this month at a glance: what was received, and what is still missing.',
+    'Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.'] },
   { date: '2026-11-02', items: [
     'Preview PDFs and photos without downloading them, and move between documents with ← and →.',
     'Import your clients from a spreadsheet, and request a document from several clients at once.',
@@ -625,7 +630,7 @@ function renderShell() {
     bindUpload();
   } else {
     v.innerHTML = `<div class="acc"><aside class="rail"><div class="field"><label for="cl-search" id="clCount">${t('Your clients')}</label><input id="cl-search" class="input" type="search" placeholder="${esc(t('Search by name or number'))}" value="${esc(S.search)}"></div>
-      <div class="rail-actions"><button class="btn small" data-act="new-client">${t('Add a client')}</button><button class="btn small" data-act="search-docs">${t('Search documents')}</button></div><nav class="rail-list" id="clList" aria-label="${esc(t('Clients'))}"></nav></aside><section id="accMain" style="min-width:0"></section></div>`;
+      <div class="rail-actions"><button class="btn small" data-act="new-client">${t('Add a client')}</button><button class="btn small" data-act="search-docs">${t('Search documents')}</button></div><div class="tagbar" id="tagBar"></div><nav class="rail-list" id="clList" aria-label="${esc(t('Clients'))}"></nav></aside><section id="accMain" style="min-width:0"></section></div>`;
     $('#cl-search').addEventListener('input', (e) => { S.search = e.target.value; renderRail(); });
   }
 }
@@ -658,7 +663,7 @@ function renderClient() {
   const w = S.ws; if (!w) return;
   const c = w.company;
   $('#hello').innerHTML = `<div>${c.firm_logo ? `<img class="firm-logo" src="${esc(c.firm_logo)}" alt="${esc(w.firm)}">` : ''}<h1>${esc(c.name)}</h1><p class="sub">${t('Client #{no}', { no: c.no })}${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}${c.city ? ` · ${esc(c.city)}` : ''} · ${esc(countryName(c.country))} · ${t('Accountant: {firm}', { firm: esc(w.firm) })}</p></div>
-    <span class="private"><i></i>${t('Private workspace. Other clients of {firm} cannot see it.', { firm: esc(w.firm) })}</span>${tipsCard(c)}`;
+    <span class="private"><i></i>${t('Private workspace. Other clients of {firm} cannot see it.', { firm: esc(w.firm) })}</span>${tipsCard(c)}${monthCard(w)}`;
   const ei = $('#emailIn');
   if (ei && c.inbound_address) { ei.hidden = false; ei.innerHTML = t('Or email attachments to {address} from your own address.', { address: `<b class="mono" style="font-size:13px">${esc(c.inbound_address)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(c.inbound_address)}">${t('Copy')}</button>` }); }
   const docs = w.items.filter((i) => i.kind === 'doc').sort(newest);
@@ -702,15 +707,114 @@ function countsFor(cid) {
   return k;
 }
 
+/** Every tag used on the firm's clients, alphabetically. */
+const allTags = () => [...new Set((S.overview?.companies || S.companies || []).flatMap((c) => c.tags || []))].sort((a, b) => a.localeCompare(b, LOCALE));
+const tagChips = (list) => (list || []).map((g) => `<span class="tag small">${esc(g)}</span>`).join('');
+
+/* ---------- deadlines of every client, and the calendar subscription ---------- */
+function calendarView() {
+  // fetched when the tab opens, and again after a minute
+  if (!S.cal || Date.now() - S.cal.at > 60e3) { S.cal = { events: S.cal?.events ?? null, at: Date.now() }; api('/calendar').then((r) => { S.cal.events = r.events; renderAcc(); }).catch((err) => toast(err.message)); }
+  const ev = (S.cal.events || []).filter((e) => !S.tagFilter || (e.tags || []).includes(S.tagFilter));
+  const head = `<div class="section-h"><p class="note" style="margin:0">${t('Open requests to clients and reports you still have to send, for the next 90 days and anything overdue.')}</p>
+    <button class="btn small" data-act="cal-subscribe">${t('Add to Google or Outlook calendar')}</button></div>`;
+  if (S.cal.events == null) return head + `<p class="loading">${t('Loading…')}</p>`;
+  if (!ev.length) return head + `<div class="empty">${t('No open deadlines. Requests and reports with a due date appear here.')}</div>`;
+  const day = (d) => new Date(d).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
+  const groups = [];
+  for (const e of ev) {
+    const key = e.overdue ? 'overdue' : new Date(e.due_at).toLocaleDateString('en-CA');
+    let g = groups.find((x) => x.key === key);
+    if (!g) groups.push(g = { key, label: e.overdue ? t('Overdue') : day(e.due_at), items: [] });
+    g.items.push(e);
+  }
+  return head + `<div class="agenda">${groups.map((g) => `<section class="${g.key === 'overdue' ? 'late' : ''}"><h4>${esc(g.label)}</h4>${g.items.map((e) => `<a class="ag-row" href="#/c/${e.company_id}/i/${e.id}">
+      <span class="pill ${e.kind === 'request' ? 'sent' : 'warn'}">${e.kind === 'request' ? t('From client') : t('You send')}</span>
+      <span class="ag-t"><b>${esc(e.title)}</b><span class="sub">#${e.no} · ${esc(e.company_name)}${e.overdue ? ` · ${t('due {date}', { date: fmtDate(e.due_at) })}` : ''}</span></span></a>`).join('')}</section>`).join('')}</div>`;
+}
+async function calendarModal(reset) {
+  let url = '';
+  try { url = (await api('/calendar/link', reset ? { method: 'POST', body: {} } : undefined)).url; } catch (err) { return toast(err.message); }
+  openModal(`${modalHead(t('Add to your calendar'))}<div class="modal-b">
+    <p class="sub">${t('Your deadlines appear in your own calendar and update by themselves. This link is private: anyone who has it sees your clients’ deadlines.')}</p>
+    <div class="field"><label for="cal-url">${t('Calendar link')}</label><div class="dr-actions" style="margin:0"><input id="cal-url" class="input mono" readonly value="${esc(url)}" style="flex:1;min-width:200px;font-size:12.5px"><button class="btn" data-act="copy" data-text="${esc(url)}">${t('Copy')}</button></div></div>
+    <ul class="sub" style="font-size:13.5px;padding-left:18px;display:grid;gap:4px">
+      <li>${t('Google Calendar: Other calendars → + → From URL, paste the link.')}</li>
+      <li>${t('Outlook: Add calendar → Subscribe from web, paste the link.')}</li>
+      <li>${t('Apple Calendar: File → New Calendar Subscription, paste the link.')}</li></ul>
+    <p class="sub" style="font-size:13px">${t('Calendars refresh subscribed links every few hours, so a new deadline can take a while to appear.')}</p>
+    <div class="dr-actions"><button class="btn" data-act="cal-reset">${t('Make a new link (the old one stops working)')}</button></div></div>`);
+}
+
+/** This month at a glance for one client: requested documents received, reports sent, and what is missing. */
+function monthCard(w) {
+  const now = new Date(), inMonth = (d) => { const x = new Date(d); return x.getFullYear() === now.getFullYear() && x.getMonth() === now.getMonth(); };
+  const req = w.items.filter((i) => i.kind === 'request' && i.due_at && inMonth(i.due_at));
+  const rep = w.items.filter((i) => i.kind === 'report' && i.due_at && inMonth(i.due_at));
+  if (!req.length && !rep.length) return '';
+  const got = req.filter((i) => i.status.state === 'done'), sent = rep.filter((i) => i.status.state !== 'expected');
+  const acc = S.me.role === 'accountant';
+  const missing = [...req.filter((i) => i.status.state !== 'done'), ...(acc ? rep.filter((i) => i.status.state === 'expected') : [])]
+    .sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
+  const bar = (n, of) => `<span class="bar"><i style="width:${of ? Math.round((n / of) * 100) : 0}%"></i></span>`;
+  const month = cap(new Date().toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' }));
+  return `<section class="month-card">
+    <div class="mc-h"><h3>${esc(month)}</h3>
+      ${req.length ? `<span class="mc-stat">${bar(got.length, req.length)}${acc ? t('{n} of {m} requested documents received', { n: got.length, m: req.length }) : t('You sent {n} of {m} requested documents', { n: got.length, m: req.length })}</span>` : ''}
+      ${rep.length ? `<span class="mc-stat">${bar(sent.length, rep.length)}${acc ? t('{n} of {m} reports sent', { n: sent.length, m: rep.length }) : t('{n} of {m} reports received from your accountant', { n: sent.length, m: rep.length })}</span>` : ''}</div>
+    ${missing.length ? `<div class="mc-miss"><span class="sub">${acc ? t('Still missing:') : t('Still to send:')}</span>${missing.map((i) => `<a href="#/c/${w.company.id}/i/${i.id}" class="${new Date(i.due_at) < now ? 'late' : ''}">${esc(i.title)} <span class="mono">${fmtDate(i.due_at)}</span></a>`).join('')}</div>`
+      : `<p class="sub" style="margin:0">${t('Everything for this month is in.')}</p>`}</section>`;
+}
+
+/* ---------- quick open (Cmd+K / Ctrl+K) ---------- */
+function quickOpen() {
+  if (!S.me || S.me.mfa?.pending) return;
+  openModal(`<div class="qo"><input id="qo-q" class="input" type="search" autocomplete="off" placeholder="${esc(t('Client name or number, document title or reference (PX-…)'))}" aria-label="${esc(t('Quick open'))}">
+    <div id="qo-list" class="qo-list" role="listbox"></div><p class="sub qo-hint">${t('↑ ↓ to choose · Enter to open · Esc to close')}</p></div>`);
+  S.qo = { sel: 0, items: [], seq: 0 };
+  const input = $('#qo-q');
+  input.addEventListener('input', () => qoSearch(input.value));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); S.qo.sel = Math.max(0, Math.min(S.qo.items.length - 1, S.qo.sel + (e.key === 'ArrowDown' ? 1 : -1))); qoDraw(); }
+    if (e.key === 'Enter') { e.preventDefault(); qoGo(S.qo.items[S.qo.sel]); }
+  });
+  qoSearch('');
+}
+async function qoSearch(q) {
+  const seq = ++S.qo.seq, s = q.trim().toLowerCase();
+  const cos = (S.overview?.companies || S.companies || [])
+    .filter((c) => !s || c.name.toLowerCase().includes(s) || String(c.no) === s.replace('#', '') || (c.tags || []).some((g) => g.toLowerCase().includes(s)))
+    .slice(0, s ? 6 : 8).map((c) => ({ kind: 'client', id: c.id, title: c.name, sub: `#${c.no}${(c.tags || []).length ? ` · ${c.tags.join(', ')}` : ''}` }));
+  S.qo.items = cos; S.qo.sel = 0; qoDraw();
+  if (s.length < 2) return;
+  try {
+    const r = await api(`/search?q=${encodeURIComponent(q.trim())}`);
+    if (seq !== S.qo.seq) return; // a newer search is on its way
+    S.qo.items = [...cos, ...r.results.slice(0, 8).map((d) => ({ kind: 'doc', id: d.id, company: d.company_id, title: d.title, sub: `${d.ref || ''} · ${d.company_name}` }))];
+    qoDraw();
+  } catch { /* clients only */ }
+}
+function qoDraw() {
+  const box = $('#qo-list'); if (!box) return;
+  box.innerHTML = S.qo.items.length ? S.qo.items.map((x, i) => `<button class="qo-item ${i === S.qo.sel ? 'on' : ''}" role="option" aria-selected="${i === S.qo.sel}" data-act="qo-pick" data-i="${i}">
+      <span class="ico ${x.kind === 'client' ? 'sky' : ''}">${x.kind === 'client' ? '#' : 'DOC'}</span><span><b>${esc(x.title)}</b><span class="sub">${esc(x.sub)}</span></span></button>`).join('')
+    : `<p class="sub" style="padding:10px 4px">${t('Nothing found.')}</p>`;
+  box.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+}
+function qoGo(x) { if (!x) return; closeModal(); if (x.kind === 'client') go(x.id); else go(x.company, x.id); }
+
 function renderRail() {
   const cos = S.overview?.companies || [];
   const q = S.search.trim().toLowerCase();
-  const shown = cos.filter((c) => !q || c.name.toLowerCase().includes(q) || String(c.no) === q.replace('#', ''));
+  const tags = allTags();
+  if (S.tagFilter && !tags.includes(S.tagFilter)) S.tagFilter = null;
+  $('#tagBar').innerHTML = tags.length ? tags.map((g) => `<button class="tag ${S.tagFilter === g ? 'on' : ''}" data-act="tag-filter" data-tag="${esc(g)}">${esc(g)}</button>`).join('') : '';
+  const shown = cos.filter((c) => (!q || c.name.toLowerCase().includes(q) || String(c.no) === q.replace('#', '')) && (!S.tagFilter || (c.tags || []).includes(S.tagFilter)));
   $('#clCount').textContent = t('Your clients ({n})', { n: cos.length });
   $('#clList').innerHTML = `<button class="cl" data-act="client" data-id="" aria-current="${!S.route.c}"><span class="no">${t('ALL')}</span><span class="nm"><b>${t('All clients')}</b><span>${t('Work queue and deadlines')}</span></span><span></span></button>` +
     shown.map((c) => {
       const k = countsFor(c.id), n = k.unopened + k.overdue;
-      return `<button class="cl" data-act="client" data-id="${c.id}" aria-current="${S.route.c === c.id}"><span class="no">#${c.no}</span><span class="nm"><b>${esc(c.name)}</b><span>${c.closed_at ? t('Closed') : tn(c.members, '{n} person', '{n} people')}</span></span>${n ? `<span class="badge ${k.stale || k.overdue ? 'bad' : 'warn'}" title="${esc(t('{unopened} not opened, {overdue} overdue', { unopened: k.unopened, overdue: k.overdue }))}">${n}</span>` : '<span></span>'}</button>`;
+      return `<button class="cl" data-act="client" data-id="${c.id}" aria-current="${S.route.c === c.id}"><span class="no">#${c.no}</span><span class="nm"><b>${esc(c.name)}</b><span>${c.closed_at ? t('Closed') : tn(c.members, '{n} person', '{n} people')}${(c.tags || []).length ? ` · ${esc(c.tags.join(', '))}` : ''}</span></span>${n ? `<span class="badge ${k.stale || k.overdue ? 'bad' : 'warn'}" title="${esc(t('{unopened} not opened, {overdue} overdue', { unopened: k.unopened, overdue: k.overdue }))}">${n}</span>` : '<span></span>'}</button>`;
     }).join('');
 }
 
@@ -726,13 +830,14 @@ function renderAcc() {
     const mine = o.open.map(withStatus).filter((i) => (i.kind === 'doc' && i.state !== 'done') || i.state === 'expected')
       .sort((a, b) => new Date(a.version_at || a.due_at) - new Date(b.version_at || b.due_at));
     const theirs = o.open.map(withStatus).filter((i) => i.kind !== 'doc' && i.state !== 'expected').sort((a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0));
-    const tb = tabs('acc:all', [{ id: 'work', label: t('Work queue') }, { id: 'clients', label: t('Clients') }, ...(isAdmin() ? [{ id: 'ai', label: t('AI reading costs') }] : [])]);
+    const tb = tabs('acc:all', [{ id: 'work', label: t('Work queue') }, { id: 'calendar', label: t('Calendar') }, { id: 'clients', label: t('Clients') }, ...(isAdmin() ? [{ id: 'ai', label: t('AI reading costs') }] : [])]);
     let body;
     if (!o.companies.length) body = `<div class="empty" style="text-align:left">${t('No clients yet. Use {button} to create a workspace and invite the people who will send documents.', { button: `<b>${t('Add a client')}</b>` })}</div>`;
     else if (tb.cur === 'work') body = `<div class="stack"><section><div class="section-h"><h3>${t('Waiting for you')}</h3><span class="note" style="margin:0">${t('Oldest first: documents to open and confirm, and reports you still owe.')}</span></div>${list(mine, t('Nothing is waiting for you.'), { compact: true, showCompany: true })}</section>
       <section><div class="section-h"><h3>${t('Waiting on clients')}</h3></div>${list(theirs, t('No reports or requests are waiting on clients.'), { compact: true, showCompany: true })}</section></div>`;
     else if (tb.cur === 'ai') body = aiUsageView();
-    else body = `<div class="tbl-wrap"><table><thead><tr><th>${t('No.')}</th><th>${t('Client')}</th><th>${t('Not opened by you')}</th><th>${t('Opened, not confirmed')}</th><th>${t('Reports you owe')}</th><th>${t('Waiting on client')}</th><th>${t('Overdue requests')}</th><th>${t('Next deadline')}</th></tr></thead><tbody>${all.map(({ c, k }) =>
+    else if (tb.cur === 'calendar') body = calendarView();
+    else body = `<div class="tbl-wrap"><table><thead><tr><th>${t('No.')}</th><th>${t('Client')}</th><th>${t('Not opened by you')}</th><th>${t('Opened, not confirmed')}</th><th>${t('Reports you owe')}</th><th>${t('Waiting on client')}</th><th>${t('Overdue requests')}</th><th>${t('Next deadline')}</th></tr></thead><tbody>${all.filter(({ c }) => !S.tagFilter || (c.tags || []).includes(S.tagFilter)).map(({ c, k }) =>
       `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)"><span class="mono">${esc(c.country || '')}</span>${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : `<span style="color:var(--muted)">${t('None')}</span>`}</td></tr>`).join('')}</tbody></table></div>`;
     const hi = first(S.me.name) ? t('Good to see you, {name}', { name: esc(first(S.me.name)) }) : t('Good to see you');
     m.innerHTML = planBanner() + `<div class="ws-h"><div><h1>${hi}</h1><p class="sub" style="margin-top:6px">${tn(o.companies.length, '{firm} · {n} client workspace', '{firm} · {n} client workspaces', { firm: esc(S.firm) })}</p></div>
@@ -759,8 +864,9 @@ function renderAcc() {
       : tb.cur === 'bank' ? bankView() : tb.cur === 'recurring' ? recurringView() : tb.cur === 'people' ? peopleView() : ledgerView();
   const more = tb.cur === 'in' || tb.cur === 'out' ? olderNote() : '';
   const up = (s) => String(s).toLocaleUpperCase(LOCALE);
-  m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">${esc(up(t('Client #{no}', { no: c.no })))} · ${esc(up(countryName(c.country)))}${c.nif ? ` · ${esc(up(taxLabel(c.country)))} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city && esc(c.city), tn(w.members.length, '{n} person with access', '{n} people with access')].filter(Boolean).join(' · ')}</p></div>
+  m.innerHTML = `<div class="ws-h"><div><p class="eyebrow">${esc(up(t('Client #{no}', { no: c.no })))} · ${esc(up(countryName(c.country)))}${c.nif ? ` · ${esc(up(taxLabel(c.country)))} ${esc(c.nif)}` : ''}</p><h1>${esc(c.name)}</h1><p class="sub" style="margin-top:6px">${[c.city && esc(c.city), tn(w.members.length, '{n} person with access', '{n} people with access')].filter(Boolean).join(' · ')}</p>${(c.tags || []).length ? `<p class="tags-line">${tagChips(c.tags)}</p>` : ''}</div>
     ${c.closed_at ? '' : `<div class="actions"><button class="btn" data-act="edit-client">${t('Edit details')}</button><button class="btn" data-act="modal-request">${t('Request a document')}</button><button class="btn primary" data-act="modal-report">${t('Send a report')}</button></div>`}</div>`
+    + (c.closed_at ? '' : monthCard(w))
     + (c.closed_at ? `<div class="chain bad" style="margin-bottom:16px"><div><p>${t('Closed on {date}. The client no longer has access and nothing can be added.', { date: fmtDate(c.closed_at) })}</p>
       <small>${t('You can export everything until {until}. After that the workspace is blocked, and deleted after {purge} when the retention period ends.', { until: fmtDate(c.export_until), purge: fmtDate(c.purge_after) })}</small></div>
       <div class="tbl-actions"><a class="btn small" href="/api/companies/${c.id}/export-all">${t('Download everything (ZIP)')}</a>${isAdmin() ? `<button class="btn small" data-act="reopen-client">${t('Reopen')}</button>` : ''}</div></div>` : '')
@@ -1138,22 +1244,23 @@ function requestModal() {
 }
 function bulkRequestModal() {
   const month = nowMonth();
-  const cos = (S.companies || []).filter((c) => !c.closed_at);
+  const cos = (S.overview?.companies || S.companies || []).filter((c) => !c.closed_at);
   openModal(`${modalHead(t('Request a document from several clients'))}
   <form class="modal-b" id="brForm" novalidate>
     <div class="field"><label for="br-title">${t('What do you need?')}</label><input id="br-title" class="input" value="${esc(t('Invoices and receipts, {month}', { month }))}"></div>
     <div class="grid2"><div class="field"><label for="br-due">${t('Due date')}</label><input id="br-due" class="input" type="date" value="${isoIn(7)}"></div><div></div></div>
     <div class="field"><label for="br-note">${t('Details (optional)')}</label><textarea id="br-note" class="input" rows="2"></textarea></div>
     <div class="field"><label>${t('Clients')}</label>
+      ${allTags().length ? `<div class="tagbar" style="margin:6px 0">${allTags().map((g) => `<button type="button" class="tag" data-act="br-tag" data-tag="${esc(g)}">${esc(g)}</button>`).join('')}</div>` : ''}
       <div class="dr-actions" style="margin:0"><input id="br-q" class="input" type="search" placeholder="${esc(t('Filter by name or number'))}" style="flex:1;min-width:160px"><button type="button" class="btn small" data-act="br-all">${t('All')}</button><button type="button" class="btn small" data-act="br-none">${t('None')}</button></div>
-      <div class="checklist" id="br-list">${cos.map((c) => `<label data-q="${esc(`${c.no} ${c.name}`.toLowerCase())}"><input type="checkbox" value="${c.id}" checked> <span class="mono">#${c.no}</span> ${esc(c.name)}</label>`).join('')}</div></div>
+      <div class="checklist" id="br-list">${cos.map((c) => `<label data-q="${esc(`${c.no} ${c.name}`.toLowerCase())}" data-tags="${esc(JSON.stringify(c.tags || []))}"><input type="checkbox" value="${c.id}" ${!S.tagFilter || (c.tags || []).includes(S.tagFilter) ? 'checked' : ''}> <span class="mono">#${c.no}</span> ${esc(c.name)}</label>`).join('')}</div></div>
     <p class="sub" style="font-size:13px">${t('Each client gets its own request with this due date, an email, and the usual reminders. Every step is recorded in each client’s log.')}</p>
     <p class="err" id="brErr" hidden></p>
     <div class="dr-actions"><button class="btn primary" type="submit" id="brBtn">${tn(cos.length, 'Send to {n} client', 'Send to {n} clients')}</button>${cancelBtn()}</div></form>`);
   const count = () => { const n = $$('#br-list input:checked').length; $('#brBtn').textContent = tn(n, 'Send to {n} client', 'Send to {n} clients'); $('#brBtn').disabled = !n; };
   $('#br-list').addEventListener('change', count);
   $('#br-q').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $$('#br-list label').forEach((l) => { l.hidden = !!q && !l.dataset.q.includes(q.replace('#', '')); }); });
-  S.brCount = count;
+  S.brCount = count; count();
 }
 
 function replaceModal(it) {
@@ -1165,7 +1272,7 @@ function replaceModal(it) {
     <div class="dr-actions"><button class="btn primary" type="submit" id="rvBtn">${t('Send new version')}</button>${cancelBtn()}</div></form>`);
 }
 function clientModal(edit) {
-  const c = edit ? S.ws.company : { country: S.firmInfo?.country || 'ES', name: '', nif: '', city: '' };
+  const c = edit ? S.ws.company : { country: S.firmInfo?.country || 'ES', name: '', nif: '', city: '', tags: S.tagFilter ? [S.tagFilter] : [] };
   const k = COUNTRY(c.country);
   const invite = edit ? '' : `<h3 style="margin-top:6px">${t('First person to invite (optional)')}</h3>
     <div class="grid2"><div class="field"><label for="co-cname">${t('Name')}</label><input id="co-cname" class="input"></div><div class="field"><label for="co-cemail">${t('Email')}</label><input id="co-cemail" class="input" type="email"></div></div>`;
@@ -1174,7 +1281,8 @@ function clientModal(edit) {
     <div class="field"><label for="co-name">${t('Company name')}</label><input id="co-name" class="input" value="${esc(c.name)}" placeholder="${esc(t('e.g. {example}', { example: 'Sol y Mar Hospitality SL' }))}"></div>
     <div class="grid2"><div class="field"><label for="co-country">${t('Country')}</label><select id="co-country" class="input">${countryOptions(c.country)}</select></div>
     <div class="field"><label for="co-nif" id="co-nif-l">${esc(k.taxIdLabel)}</label><input id="co-nif" class="input" value="${esc(c.nif)}" placeholder="${esc(k.taxIdHint)}"></div></div>
-    <div class="field"><label for="co-city">${t('City')}</label><input id="co-city" class="input" value="${esc(c.city)}"></div>
+    <div class="grid2"><div class="field"><label for="co-city">${t('City')}</label><input id="co-city" class="input" value="${esc(c.city)}"></div>
+    <div class="field"><label for="co-tags">${t('Tags')}</label><input id="co-tags" class="input" list="co-tag-list" value="${esc((c.tags || []).join(', '))}" placeholder="${esc(t('e.g. monthly VAT, restaurants'))}"><datalist id="co-tag-list">${allTags().map((g) => `<option value="${esc(g)}">`).join('')}</datalist></div></div>
     <p class="sub" style="font-size:13px" id="co-hint">${countryHint(k)}</p>
     ${invite}
     <p class="err" id="coErr" hidden></p>
@@ -1432,14 +1540,14 @@ document.addEventListener('submit', async (e) => {
     if (f.id === 'coForm') {
       const name = $('#co-name').value.trim();
       if (!name) return showErr('#coErr', t('Enter the company name.'));
-      const r = await api('/companies', { method: 'POST', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim(), contactName: $('#co-cname').value.trim(), contactEmail: $('#co-cemail').value.trim() } })
+      const r = await api('/companies', { method: 'POST', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim(), contactName: $('#co-cname').value.trim(), contactEmail: $('#co-cemail').value.trim(), tags: $('#co-tags').value } })
         .catch((err) => { showErr('#coErr', err.message); return null; });
       if (r) { closeModal(); toast(t('Workspace created.')); go(r.id); }
     }
     if (f.id === 'coEdit') {
       const name = $('#co-name').value.trim();
       if (!name) return showErr('#coErr', t('Enter the company name.'));
-      const ok = await api(`/companies/${S.route.c}`, { method: 'PATCH', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim() } })
+      const ok = await api(`/companies/${S.route.c}`, { method: 'PATCH', body: { name, country: $('#co-country').value, nif: $('#co-nif').value.trim(), city: $('#co-city').value.trim(), tags: $('#co-tags').value } })
         .then(() => true, (err) => { showErr('#coErr', err.message); return false; });
       if (ok) { closeModal(); toast(t('Client details saved. The change is in the log.')); await refresh(); }
     }
@@ -1607,12 +1715,22 @@ document.addEventListener('click', async (e) => {
     case 'pro-feature': proModal(b.dataset.what || ''); break;
     case 'import-clients': importModal(); break;
     case 'help': helpModal(); break;
+    case 'qo-pick': qoGo(S.qo.items[Number(b.dataset.i)]); break;
+    case 'cal-subscribe': calendarModal(false); break;
+    case 'cal-reset': if (confirm(t('Make a new link? Calendars using the old one will stop updating.'))) calendarModal(true); break;
+    case 'tag-filter': S.tagFilter = S.tagFilter === b.dataset.tag ? null : b.dataset.tag; renderRail(); if (!S.route.c) renderAcc(); break;
     case 'passkey-signin': passkeySignin(); break;
     case 'passkey-add': if (await addPasskey()) renderSigninMethods(); break;
     case 'passkey-add-required': if (await addPasskey()) location.reload(); break;
     case 'passkey-remove': if (confirm(t('Remove this passkey? You can still sign in with an email link.'))) { try { await api(`/passkeys/${encodeURIComponent(b.dataset.id)}`, { method: 'DELETE' }); renderSigninMethods(); } catch (err) { toast(err.message); } } break;
     case 'identity-unlink': try { await api(`/identities/${b.dataset.p}`, { method: 'DELETE' }); renderSigninMethods(); } catch (err) { toast(err.message); } break;
     case 'bulk-request': bulkRequestModal(); break;
+    case 'br-tag': {
+      const on = !b.classList.contains('on'); b.classList.toggle('on', on);
+      const chosen = $$('#brForm .tag.on').map((x) => x.dataset.tag);
+      $$('#br-list label').forEach((l) => { l.querySelector('input').checked = !chosen.length || JSON.parse(l.dataset.tags).some((g) => chosen.includes(g)); });
+      S.brCount?.(); break;
+    }
     case 'br-all': case 'br-none': $$('#br-list label').forEach((l) => { if (!l.hidden) l.querySelector('input').checked = b.dataset.act === 'br-all'; }); S.brCount?.(); break;
     case 'import-template': importTemplate(); break;
     case 'import-check': importCheck(false); break;
@@ -1655,6 +1773,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); if ($('#qo-q')) closeModal(); else quickOpen(); return; }
   if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.route.i) go(S.route.c); return; }
   // ← → move between documents while one is open (not while typing)
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.route.i && $('#modal').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) stepItem(e.key === 'ArrowLeft' ? -1 : 1);

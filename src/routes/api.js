@@ -3,6 +3,7 @@ import express from 'express';
 import { planImport, runImport } from '../import.js';
 import * as passkeys from '../passkeys.js';
 import * as oauth from '../oauth.js';
+import * as calendar from '../calendar.js';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout, createSession, setSessionCookie } from '../auth.js';
@@ -132,7 +133,7 @@ api.get('/me', async (req, res) => {
     return res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, mfa: { enabled: true, pending: true } }, firm: '', companies: [], countries: publicCountries() });
   }
   const { rows } = u.role === 'accountant'
-    ? await query('select id, no, name, nif, city, country, closed_at, export_until from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [u.firm_id, u.id])
+    ? await query('select id, no, name, nif, city, country, closed_at, export_until, tags from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [u.firm_id, u.id])
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name,
                      case when f.logo_key is not null and (f.tier = 'pro' or f.plan = 'trial') then '/logos/' || f.logo_key end as firm_logo from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
@@ -379,6 +380,16 @@ api.delete('/passkeys/:id', async (req, res) => { await passkeys.removePasskey(r
 api.get('/identities', async (req, res) => res.json({ identities: await oauth.listIdentities(req.user), providers: oauth.enabledProviders() }));
 api.delete('/identities/:provider', async (req, res) => { await oauth.unlink(req.user, req.params.provider); res.json({ ok: true }); });
 
+/* ---------- deadlines calendar ---------- */
+
+api.get('/calendar', async (req, res) => {
+  const d = (v, def) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : def);
+  const today = new Date().toISOString().slice(0, 10);
+  res.json({ events: await calendar.deadlines(req.user, { from: d(req.query.from, today), to: d(req.query.to, new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)) }) });
+});
+api.get('/calendar/link', async (req, res) => res.json({ url: await calendar.calendarUrl(req.user) }));
+api.post('/calendar/link', async (req, res) => res.json({ url: await calendar.calendarUrl(req.user, { reset: true }) }));
+
 /* ---------- support ---------- */
 
 api.post('/support', json, async (req, res) => {
@@ -422,7 +433,7 @@ api.get('/overview', async (req, res) => {
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants have an overview.');
   const firmId = req.user.firm_id;
   const uid = req.user.id;
-  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at, closed_at, export_until from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [firmId, uid]);
+  const { rows: cos } = await query('select id, no, name, nif, city, country, created_at, closed_at, export_until, tags from companies where firm_id = $1 and accountant_sees(id, $2) and blocked_at is null order by no', [firmId, uid]);
   const { rows: open } = await query(
     `select i.id, i.company_id, i.seq, i.kind, i.title, i.category, i.period, i.due_at, i.state, i.version,
             i.sent_at, i.version_at, i.opened_at, i.done_at, i.reminders, c.no, c.name as company_name, c.country
@@ -442,7 +453,7 @@ api.get('/overview', async (req, res) => {
 api.post('/companies', json, async (req, res) => {
   const b = req.body || {};
   const co = await tx(async (c) => {
-    const created = await companies.createCompany(c, { user: req.user, name: str(b.name, 200), nif: str(b.nif, 40), city: str(b.city, 100), country: b.country || undefined });
+    const created = await companies.createCompany(c, { user: req.user, name: str(b.name, 200), nif: str(b.nif, 40), city: str(b.city, 100), country: b.country || undefined, tags: b.tags });
     if (b.contactEmail) await companies.addMember(c, { user: req.user, company: created, email: b.contactEmail, name: str(b.contactName, 200) });
     return created;
   });
@@ -467,8 +478,11 @@ api.patch('/companies/:id', json, async (req, res) => {
   const b = req.body || {};
   await tx(async (c) => {
     const company = await companyFor(req.user, req.params.id, c);
-    await companies.updateCompany(c, { user: req.user, company, name: str(b.name, 200), nif: b.nif === undefined ? undefined : str(b.nif, 40),
-      city: b.city === undefined ? undefined : str(b.city, 100), country: b.country === undefined ? undefined : b.country });
+    if (b.tags !== undefined) await companies.setTags(c, { user: req.user, company, tags: b.tags });
+    if (['name', 'nif', 'city', 'country'].some((k) => b[k] !== undefined)) {
+      await companies.updateCompany(c, { user: req.user, company, name: str(b.name, 200), nif: b.nif === undefined ? undefined : str(b.nif, 40),
+        city: b.city === undefined ? undefined : str(b.city, 100), country: b.country === undefined ? undefined : b.country });
+    }
   });
   res.json({ ok: true });
 });
@@ -533,6 +547,7 @@ async function companyState(user, company, { days = 120 } = {}) {
   const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
+      tags: user.role === 'accountant' ? company.tags : undefined,
       tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at || !companyHasPro(company) ? null : inboundAddress(company), pro: companyHasPro(company), firm_logo: firmLogoUrl(company) ? `/logos/${company.firm_logo_key}` : null,
       closed_at: company.closed_at, export_until: company.export_until, purge_after: company.purge_after },
     firm: company.firm_name,

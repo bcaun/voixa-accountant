@@ -18,6 +18,8 @@ const ALIASES = {
     'numero de identificacao fiscal', 'numero de contribuinte', 'tax identification number'],
   city: ['city', 'town', 'ciudad', 'localidad', 'poblacion', 'municipio', 'citta', 'comune', 'localita', 'ville', 'commune', 'stadt', 'ort', 'cidade', 'localidade', 'concelho'],
   country: ['country', 'pais', 'paese', 'pays', 'land', 'country code'],
+  tags: ['tags', 'tag', 'group', 'groups', 'label', 'labels', 'etiquetas', 'etiqueta', 'grupo', 'grupos', 'etichette', 'etichetta', 'gruppo', 'gruppi',
+    'etiquettes', 'etiquette', 'groupe', 'groupes', 'schlagworter', 'etiketten', 'gruppe', 'gruppen', 'grupos'],
   contactName: ['contact', 'contact name', 'contact person', 'contacto', 'nombre contacto', 'nombre del contacto', 'persona de contacto', 'referente', 'contatto',
     'nome contatto', 'interlocuteur', 'nom du contact', 'ansprechpartner', 'kontakt', 'kontaktperson', 'contato', 'nome do contato', 'pessoa de contacto'],
   email: ['email', 'e mail', 'mail', 'email address', 'contact email', 'correo', 'correo electronico', 'email contacto', 'posta elettronica', 'indirizzo email',
@@ -86,7 +88,7 @@ export async function planImport(c, user, text) {
   const seen = [];
   const out = rows.slice(1).map((r, idx) => {
     const row = { line: idx + 2, name: cell(r, 'name').slice(0, 200), nif: cell(r, 'nif').slice(0, 40), city: cell(r, 'city').slice(0, 100),
-      contactName: cell(r, 'contactName').slice(0, 200), email: cell(r, 'email').toLowerCase().slice(0, 200), country: firm.country, status: 'ok' };
+      contactName: cell(r, 'contactName').slice(0, 200), tags: companies.cleanTags(cell(r, 'tags')), email: cell(r, 'email').toLowerCase().slice(0, 200), country: firm.country, status: 'ok' };
     const bad = (message) => Object.assign(row, { status: 'error', message });
     const raw = cell(r, 'country');
     if (raw) { const cc = countryFrom(raw); if (!cc || !isCountry(cc)) return bad(`Unknown country “${raw}”. Use ES, IT, FR, DE or PT.`); row.country = cc; }
@@ -112,7 +114,7 @@ export async function runImport(tx, user, plan, { invite }) {
   for (const row of plan.rows.filter((r) => r.status === 'ok')) {
     try {
       row.id = await tx(async (c) => {
-        const co = await companies.createCompany(c, { user, name: row.name, nif: row.nif, city: row.city, country: row.country });
+        const co = await companies.createCompany(c, { user, name: row.name, nif: row.nif, city: row.city, country: row.country, tags: row.tags });
         if (invite && row.email) await companies.addMember(c, { user, company: co, email: row.email, name: row.contactName });
         return co.id;
       });

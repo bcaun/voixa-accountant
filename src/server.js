@@ -8,6 +8,7 @@ import { handlePostmarkWebhook } from './mailer.js';
 import { api } from './routes/api.js';
 import { authPage, revokePage, oauthPage, PAGE_LANGS } from './pages.js';
 import * as oauth from './oauth.js';
+import { icsFor } from './calendar.js';
 import { createSession } from './auth.js';
 import { revokeFromAlert } from './devices.js';
 import { handleInbound } from './inbound.js';
@@ -102,6 +103,14 @@ export function createApp() {
   app.get('/bank/callback', async (req, res) => {
     const r = await finishBank(String(req.query.ref || '')).catch((err) => { console.error('bank callback', err.message); return null; });
     res.redirect(303, r ? `/#/c/${r.companyId}?bank=${r.ok ? 'ok' : 'failed'}` : '/');
+  });
+
+  // Private deadline feeds for Google Calendar, Outlook or Apple Calendar. The address is the key.
+  app.get('/calendar/:file', async (req, res) => {
+    const ics = await icsFor(String(req.params.file).replace(/\.ics$/, ''));
+    if (!ics) return res.status(404).type('text/plain').send('Not found');
+    res.set({ 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, max-age=900', 'Content-Disposition': 'inline; filename="pescada.ics"' });
+    res.send(ics);
   });
 
   // Firms' logos, shown in their clients' emails and spaces. The address is a random key.
