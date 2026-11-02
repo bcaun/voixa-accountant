@@ -118,6 +118,15 @@ test('the PDF report carries a PAdES seal with a signature timestamp, which Open
   ctx.pdf = pdf;
 });
 
+test('downloading again reuses the sealed PDF until the log changes', async () => {
+  assert.deepEqual(await getPdf(), ctx.pdf, 'the same sealed file, no new seal or timestamp');
+  const call = (m, p, body) => fetch(`${base}/api${p}`, { method: m, headers: { cookie: ctx.cookie, 'X-Voixa': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  await call('POST', `/companies/${ctx.co}/requests`, { title: 'Facturas, noviembre', due: '2026-12-20' });
+  const fresh = await getPdf();
+  assert.notDeepEqual(fresh, ctx.pdf, 'a new entry in the log makes a new sealed report');
+  assert.equal(await opensslVerify(fresh), true);
+});
+
 test('any change to the sealed PDF breaks the seal', async () => {
   const bad = Buffer.from(ctx.pdf);
   const at = bad.indexOf('/Count 1');      // a byte inside the sealed range
@@ -127,6 +136,7 @@ test('any change to the sealed PDF breaks the seal', async () => {
 
 test('remote sealing through the CSC API gives the same result without the key on the server', async () => {
   Object.assign(config.seal, { certFile: '', keyFile: '', cscUrl: `http://127.0.0.1:${cscSrv.address().port}`, cscClientId: 'id', cscClientSecret: 'secret', cscCredentialId: 'voixa-seal' });
+  await pool.query('delete from sealed_reports'); // otherwise the report sealed with the local key is reused
   const pdf = await getPdf();
   assert.equal(cscSigns, 1);
   assert.equal(await opensslVerify(pdf), true);

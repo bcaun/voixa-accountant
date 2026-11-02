@@ -6,6 +6,7 @@ import { fmtTime as fmtTimeTz, fmtDay as fmtDayTz, cityOf } from './dates.js';
 import { countryOf } from './countries.js';
 import { config } from './config.js';
 import { sealOn, sealPdf } from './seal.js';
+import { query } from './db.js';
 
 // The standard PDF fonts cover Western European text (WinAnsi); anything else is replaced.
 const WIN = new Set('€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ');
@@ -15,7 +16,29 @@ const safe = (s) => [...String(s ?? '')].map((c) => MAP[c] ?? ((c >= ' ' && c <=
 const A4 = [595.28, 841.89], M = 46;
 const INK = rgb(0.043, 0.169, 0.247), MUTED = rgb(0.33, 0.38, 0.43), OK = rgb(0.16, 0.44, 0.31), BAD = rgb(0.68, 0.25, 0.17), LINE = rgb(0.8, 0.83, 0.85);
 
+/**
+ * The PDF to hand out. With a seal on, a sealed PDF is reused while the client's log and its latest
+ * timestamp are unchanged: each new seal spends a timestamp and a remote signature.
+ */
 export async function reportPdf(company, { itemId, by }) {
+  if (!sealOn()) return buildPdf(company, { itemId, by });
+  const { rows: [k] } = await query(
+    `select c.head_seq, coalesce((select max(e.timestamp_id) from timestamp_entries e where e.company_id = c.id), 0) as stamp_id
+     from companies c where c.id = $1`, [company.id]);
+  const { rows: [hit] } = await query(
+    `select pdf from sealed_reports where company_id = $1 and item_id is not distinct from $2 and head_seq = $3 and stamp_id = $4`,
+    [company.id, itemId || null, k.head_seq, k.stamp_id]);
+  if (hit) return Buffer.from(hit.pdf);
+  const pdf = await buildPdf(company, { itemId, by });
+  await query(
+    `insert into sealed_reports (company_id, item_id, head_seq, stamp_id, pdf) values ($1, $2, $3, $4, $5)
+     on conflict (company_id, coalesce(item_id, '00000000-0000-0000-0000-000000000000'::uuid))
+     do update set head_seq = excluded.head_seq, stamp_id = excluded.stamp_id, pdf = excluded.pdf, created_at = now()`,
+    [company.id, itemId || null, k.head_seq, k.stamp_id, pdf]);
+  return pdf;
+}
+
+async function buildPdf(company, { itemId, by }) {
   const r = await collectReport(company, { itemId });
   const tz = r.tz, time = (d) => (d ? fmtTimeTz(d, tz) : '—'), day = (d) => fmtDayTz(d, tz);
   const doc = await PDFDocument.create();
@@ -54,7 +77,9 @@ export async function reportPdf(company, { itemId, by }) {
   space(4);
   text(r.title, { f: font.b, size: 17, gap: 5 });
   text(`${company.name} · Client #${company.no}${company.nif ? ` · ${countryOf(company.country).taxIdLabel} ${company.nif}` : ''} · ${countryOf(company.country).name}`, { color: MUTED });
-  text(`Generated ${time(new Date())} by ${by.name || by.email}. Times are ${cityOf(tz)} time.`, { color: MUTED });
+  // a sealed report is shared by everyone who downloads it, so it names the firm rather than one person
+  text(sealOn() ? `Issued ${time(new Date())} by Pescada for ${company.firm_name || 'the firm'}. Times are ${cityOf(tz)} time.`
+    : `Generated ${time(new Date())} by ${by.name || by.email}. Times are ${cityOf(tz)} time.`, { color: MUTED });
   space(6); rule();
 
   text(r.verification.ok ? 'Log verified.' : 'Log check failed.', { f: font.b, color: r.verification.ok ? OK : BAD });
