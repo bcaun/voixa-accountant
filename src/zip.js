@@ -13,7 +13,8 @@ export function makeZip(entries) {
   let offset = 0;
   const used = new Set();
   for (const e of entries) {
-    let name = e.name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+    // folders are kept; anything that could step outside the archive ("..", absolute paths) is dropped
+    let name = e.name.split('/').map((s) => s.replace(/[\\:*?"<>|\x00-\x1f]/g, '_')).filter((s) => s && s !== '.' && s !== '..').join('/');
     for (let i = 2; used.has(name.toLowerCase()); i++) name = e.name.replace(/(\.[^.]*)?$/, ` (${i})$1`);
     used.add(name.toLowerCase());
     const nameBuf = Buffer.from(name, 'utf8');

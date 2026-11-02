@@ -2,6 +2,7 @@
 // (open it in a browser and print or save as PDF).
 import { query } from './db.js';
 import { verifyCompany } from './ledger.js';
+import { latestFor } from './timestamps.js';
 import { computeStatus, fmtSize, refOf } from './items.js';
 import { fmtDay as fmtDayTz, fmtTime as fmtTimeTz, cityOf } from './dates.js';
 import { countryOf, tzOf } from './countries.js';
@@ -34,6 +35,7 @@ export async function exportReport(company, { itemId, by }) {
   const tz = tzOf(company.country);
   const fmtTime = (d) => fmtTimeTz(d, tz), fmtDay = (d) => fmtDayTz(d, tz);
   const verification = await verifyCompany({ query }, company.id);
+  const stamp = await latestFor(company.id);
   const { rows: its } = await query(`select * from items where company_id = $1 ${itemId ? 'and id = $2' : ''} order by seq`, itemId ? [company.id, itemId] : [company.id]);
   const ids = its.map((i) => i.id);
   const { rows: evs } = await query(
@@ -66,7 +68,9 @@ table{border-collapse:collapse;width:100%} th,td{border-bottom:1px solid #E1E7EC
 <div class="mu">Generated ${fmtTime(new Date())} by ${esc(by.name || by.email)}. Times are ${cityOf(tz)} time.</div>
 <div class="box">${verification.ok
     ? `<span class="ok">Log verified.</span> ${verification.count} entries; every entry matches its SHA-256 hash and links to the one before it. Latest hash: <span class="m">${verification.headHash || '—'}</span>`
-    : `<span class="bad">Log check failed:</span> ${esc(verification.reason)}.`}</div>
+    : `<span class="bad">Log check failed:</span> ${esc(verification.reason)}.`}${stamp
+    ? `<br><span class="ok">${stamp.qualified ? 'Qualified timestamp' : 'Trusted timestamp'}.</span> Entries up to #${stamp.seq} are sealed by an RFC 3161 timestamp${stamp.qualified ? ' from a qualified trust service provider (eIDAS art. 41)' : ''}: ${esc(stamp.tsa_name)}, ${fmtTime(stamp.gen_time)}, serial <span class="m">${esc(stamp.serial)}</span>. The token can be checked independently; it is included in the full export.`
+    : ''}</div>
 <h2>${itemId ? 'Item' : 'Items'}</h2>
 <table><thead><tr><th>Ref</th><th>Title and files</th><th>Sent</th><th>Email notification</th><th>Opened by recipient</th><th>Confirmed / approved</th></tr></thead><tbody>${itemRows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
 <h2>Activity log</h2>

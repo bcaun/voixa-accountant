@@ -812,4 +812,6 @@ export default {
   "A calendar of every client’s deadlines, which you can also add to Google Calendar, Outlook or Apple Calendar.": "Un calendario con los plazos de todos los clientes, que también puedes añadir a Google Calendar, Outlook o el Calendario de Apple.",
   "Each client shows this month at a glance: what was received, and what is still missing.": "Cada cliente muestra este mes de un vistazo: lo que se ha recibido y lo que aún falta.",
   "Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.": "Pulsa Cmd+K (Ctrl+K en Windows) para ir a cualquier cliente o documento.",
+  "Entries up to #{n} are sealed by a qualified timestamp ({tsa}, {time}).": "Las entradas hasta la n.º {n} están selladas con un sello de tiempo cualificado ({tsa}, {time}).",
+  "Entries up to #{n} are sealed by a trusted timestamp ({tsa}, {time}).": "Las entradas hasta la n.º {n} están selladas con un sello de tiempo de confianza ({tsa}, {time}).",
 };

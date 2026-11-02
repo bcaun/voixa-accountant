@@ -14,6 +14,7 @@ import { processJobs } from './recognition/recognize.js';
 import { sendDigests } from './digest.js';
 import { scanningOn, scanStored } from './antivirus.js';
 import { runClosures } from './closure.js';
+import { anchorNow, timestampsOn } from './timestamps.js';
 import { syncQuantities } from './billing.js';
 import { alert } from './alerts.js';
 import { syncAll as syncBankFeeds } from './bankfeeds.js';
@@ -36,6 +37,13 @@ export async function runScheduler(now = new Date()) {
       await lockClient.query(`delete from signup_requests where created_at < now() - interval '2 days'`); // they hold email addresses
       await syncBankFeeds(now).catch((err) => console.error('bank feeds', err.message));
       if (now - lastBillingSync > 24 * 36e5) { lastBillingSync = now.getTime(); await syncQuantities().catch((err) => console.error('billing', err.message)); }
+      // seal the logs that grew with a trusted timestamp, at most once per interval
+      if (timestampsOn()) {
+        const { rows: [last] } = await lockClient.query('select max(created_at) as at from timestamps');
+        if (!last.at || now - last.at >= config.tsa.intervalMin * 6e4) {
+          await anchorNow().catch((err) => { console.error('timestamp', err.message); alert('Timestamping failed', `${config.tsa.url}\n\n${err.message}`); });
+        }
+      }
       const digests = await sendDigests(now);
       await flushEmails();
       return { generated, reminded, digests, rescanned, closures };

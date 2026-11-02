@@ -77,6 +77,14 @@ export const config = {
     apiBase: env.STRIPE_API_BASE || 'https://api.stripe.com',
   },
 
+  // trusted timestamps on the evidence log (RFC 3161); off until TSA_URL is set
+  tsa: {
+    url: env.TSA_URL || '', user: env.TSA_USER || '', password: env.TSA_PASSWORD || '', policy: env.TSA_POLICY || '',
+    name: env.TSA_NAME || (() => { try { return new URL(env.TSA_URL).hostname; } catch { return ''; } })(),
+    qualified: env.TSA_QUALIFIED === 'yes',            // say "qualified" only for a TSA on the EU trusted list
+    intervalMin: num(env.TSA_INTERVAL_MIN, 60),
+  },
+
   // sign in with Google / Microsoft (OpenID Connect); each is off until its client ID and secret are set
   oauth: {
     google: { clientId: env.GOOGLE_CLIENT_ID || '', clientSecret: env.GOOGLE_CLIENT_SECRET || '',

@@ -133,6 +133,10 @@ exports, the append-only guard and detection of a tampered log.
   `organizations`). Microsoft accounts are only linked by the signed-in person, never matched by email. A sign-in from a
   new browser or device is reported by email with a one-click "sign out everywhere" link. `SUPPORT_EMAIL` receives in-app
   support messages.
+- **Trusted timestamps:** with `TSA_URL` (RFC 3161; `TSA_USER`/`TSA_PASSWORD`, `TSA_NAME`, `TSA_QUALIFIED=yes` only for a
+  qualified TSA on the EU trusted list, `TSA_INTERVAL_MIN` default 60) the heads of the logs that grew are sealed hourly. Tokens and
+  manifests are kept, shown in the log and report, and included in the full export for checking with `openssl ts -verify`.
+  CLI: `timestamp-now`, `verify-timestamps`.
 - **Closing clients:** `CLOSE_EXPORT_DAYS` (30) export window, then blocked; purged after `RETENTION_YEARS` (6).
 - **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,
   `list-firms`). Clients are invited from the app. A firm can change its name and default country in the app.

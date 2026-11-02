@@ -812,4 +812,6 @@ export default {
   "A calendar of every client’s deadlines, which you can also add to Google Calendar, Outlook or Apple Calendar.": "Un agenda des échéances de tous vos clients, que vous pouvez aussi ajouter à Google Agenda, Outlook ou Calendrier d’Apple.",
   "Each client shows this month at a glance: what was received, and what is still missing.": "Chaque client affiche le mois en cours en un coup d’œil : ce qui a été reçu et ce qui manque encore.",
   "Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.": "Appuyez sur Cmd+K (Ctrl+K sous Windows) pour accéder à n’importe quel client ou document.",
+  "Entries up to #{n} are sealed by a qualified timestamp ({tsa}, {time}).": "Les entrées jusqu’à la n° {n} sont scellées par un horodatage qualifié ({tsa}, {time}).",
+  "Entries up to #{n} are sealed by a trusted timestamp ({tsa}, {time}).": "Les entrées jusqu’à la n° {n} sont scellées par un horodatage de confiance ({tsa}, {time}).",
 };

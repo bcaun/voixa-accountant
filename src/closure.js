@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { pool, query, tx } from './db.js';
 import { appendEvent, lockCompany } from './ledger.js';
 import { storage } from './storage.js';
+import { proofEntries } from './timestamps.js';
 import { HttpError, actorOf } from './auth.js';
 import { firmEvent } from './audit.js';
 import { notify, refOf, SYSTEM } from './items.js';
@@ -68,6 +69,7 @@ export async function exportEverything(company, by) {
   entries.push({ name: 'activity-log.csv', data: Buffer.from(csv.body) });
   entries.push({ name: 'tracking-report.html', data: Buffer.from(await exportReport(company, { by })) });
   entries.push({ name: 'files.csv', data: Buffer.from(['ref,version,file,sha256', ...rows.map((r) => [refOf(company, r), r.version, r.file_name, r.sha256].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\r\n')) });
+  entries.push(...await proofEntries(company.id));
   return makeZip(entries);
 }
 

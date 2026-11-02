@@ -52,6 +52,18 @@ try {
     const counts = (await pool.query(`select (select count(*) from firms) as firms, (select count(*) from items) as items, (select count(*) from versions) as files`)).rows[0];
     console.log(`${rows.length} clients, ${entries} log entries, ${counts.items} items, ${counts.files} file versions, ${counts.firms} firms: ${bad ? `${bad} BROKEN` : 'every log verifies'}`);
     if (bad) process.exitCode = 2;
+  } else if (cmd === 'timestamp-now' || cmd === 'verify-timestamps') {
+    const ts = await import('./timestamps.js');
+    if (cmd === 'timestamp-now') {
+      if (!ts.timestampsOn()) throw new Error('Set TSA_URL first (see DEPLOY.md, section 16).');
+      const t = await ts.anchorNow();
+      console.log(t ? `Timestamp #${t.id}: ${t.manifest.trim().split('\n').length} client log(s) sealed at ${t.gen_time.toISOString()} by ${t.tsa_name}, serial ${t.serial}` : 'Nothing new to timestamp.');
+    } else {
+      const r = await ts.verifyAll();
+      for (const p of r.problems) console.log(`PROBLEM ${p}`);
+      console.log(`${r.count} timestamp(s) checked: ${r.problems.length ? `${r.problems.length} problem(s)` : 'all match the log and carry a valid TSA signature'}`);
+      if (r.problems.length) process.exitCode = 2;
+    }
   } else if (cmd === 'set-tier') {
     if (!['essential', 'pro'].includes(values.tier)) throw new Error('Pass --tier essential or --tier pro');
     const f = await findFirm(values.firm || '');
@@ -85,7 +97,7 @@ try {
       if (!u) throw new Error(`No user ${email}`);
       console.log(await createLoginLink(u.id));
     } else {
-      throw new Error('Commands: create-firm, list-firms, set-tier, create-accountant, login-link, verify-all');
+      throw new Error('Commands: create-firm, list-firms, set-tier, create-accountant, login-link, verify-all, timestamp-now, verify-timestamps');
     }
   }
 } catch (err) {

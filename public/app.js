@@ -1099,7 +1099,8 @@ function ledgerView() {
   }
   const v = S.verify;
   const bar = v.pending ? `<div class="chain"><p>${t('Checking the log…')}</p></div>` : v.ok
-    ? `<div class="chain ok"><div><p>${t('Log verified on the server: {n} entries, chain unbroken', { n: v.checked })}</p><small>${t('Every entry matches its SHA-256 hash and points to the entry before it.')}</small></div></div>`
+    ? `<div class="chain ok"><div><p>${t('Log verified on the server: {n} entries, chain unbroken', { n: v.checked })}</p><small>${t('Every entry matches its SHA-256 hash and points to the entry before it.')}</small>${v.timestamp
+      ? `<small>${v.timestamp.qualified ? t('Entries up to #{n} are sealed by a qualified timestamp ({tsa}, {time}).', { n: v.timestamp.seq, tsa: esc(v.timestamp.tsa), time: fmt(v.timestamp.at) }) : t('Entries up to #{n} are sealed by a trusted timestamp ({tsa}, {time}).', { n: v.timestamp.seq, tsa: esc(v.timestamp.tsa), time: fmt(v.timestamp.at) })}</small>` : ''}</div></div>`
     : `<div class="chain bad"><div><p>${t('Log check failed')}</p><small>${t('{reason}. Contact {firm}.', { reason: esc(v.reason), firm: esc(w.firm) })}</small></div></div>`;
   const evs = S.log.events;
   return `<div class="section-h"><p class="note" style="margin:0">${t('Every action is written to an append-only log. Each entry carries the hash of the entry before it, so editing or deleting any past entry breaks the chain.')}</p>

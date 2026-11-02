@@ -4,6 +4,7 @@ import { planImport, runImport } from '../import.js';
 import * as passkeys from '../passkeys.js';
 import * as oauth from '../oauth.js';
 import * as calendar from '../calendar.js';
+import { latestFor } from '../timestamps.js';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout, createSession, setSessionCookie } from '../auth.js';
@@ -955,7 +956,8 @@ api.post('/items/:id/remind', json, simple(items.remind));
 
 api.get('/companies/:id/verify', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
-  res.json(await verifyCompany({ query }, company.id));
+  const [v, stamp] = await Promise.all([verifyCompany({ query }, company.id), latestFor(company.id)]);
+  res.json({ ...v, timestamp: stamp && { seq: Number(stamp.seq), at: stamp.gen_time, tsa: stamp.tsa_name, qualified: stamp.qualified } });
 });
 
 async function logExport(user, company, what) {
