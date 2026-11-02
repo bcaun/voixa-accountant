@@ -2,6 +2,18 @@ import { company } from '../company.mjs';
 
 // Icons from the brand kit: 24 px grid, stroke 1.75, round caps and joins.
 const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+// Abstract hero art: contour lines like a sea-floor chart, drawn once at build time.
+const CONTOURS = (() => {
+  const lines = [];
+  for (let i = 0; i < 18; i++) {
+    const y0 = 40 + i * 26, amp = 10 + 16 * Math.sin(i * 0.7) ** 2, f = 0.011 + (i % 5) * 0.0013, ph = i * 0.9;
+    const pts = [];
+    for (let x = -20; x <= 620; x += 20) pts.push(`${x},${(y0 + amp * Math.sin(x * f + ph) + 7 * Math.sin(x * 0.031 + i)).toFixed(1)}`);
+    lines.push(`<polyline points="${pts.join(' ')}" style="opacity:${(0.10 + 0.22 * Math.sin(i / 17 * Math.PI)).toFixed(2)}"/>`);
+  }
+  return `<svg class="contours" viewBox="0 0 600 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${lines.join('')}</svg>`;
+})();
+
 export const I = {
   send: icon('<path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>'),
   notify: icon('<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9Z"/><path d="M10 20a2 2 0 0 0 4 0"/>'),
@@ -26,7 +38,9 @@ export function home(t, lang) {
     <p class="fine">${t.fine}</p>
   </div>
   <div class="horizon" role="img" aria-label="${t.visualAria}">
-    <div class="sun"></div><div class="sea"></div><div class="lagoon"></div><div class="deep"></div>
+    <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+    ${CONTOURS}<div class="grain"></div>
+    <p class="art-meta mono"><span>N 41°23′</span><span>SHA-256</span><span>E 2°10′</span></p>
     <div class="card">${t.rows.map(([name, when, key, label]) => `<div class="doc-row"><div><b>${name}</b><span class="mono">${when}</span></div><span class="status ${key}">${label}</span></div>`).join('')}</div>
   </div>
 </div></section>
