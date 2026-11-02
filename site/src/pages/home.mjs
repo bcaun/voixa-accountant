@@ -70,7 +70,7 @@ export function home(t, lang) {
   <div class="cards-deep">${t.secCards.map(([ic, b, s]) => `<div>${I[ic]}<b>${b}</b><span>${s}</span></div>`).join('')}</div>
 </div></section>
 
-<section class="demo" id="demo"><div class="wrap">
+<section class="demo" id="demo"><div class="glow g1" aria-hidden="true"></div><div class="glow g2" aria-hidden="true"></div>${CONTOURS}<div class="grain" aria-hidden="true"></div><div class="wrap">
   <h2>${t.closeTitle}</h2>
   <p class="lead">${t.closeLead}</p>
   ${demoForm(t.form, lang, t.demo)}

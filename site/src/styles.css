@@ -167,13 +167,21 @@ p { margin: 0; }
 .deep .lead { color: var(--cielo); font-size: 19px; }
 
 /* closing call to action */
-.demo { position: relative; overflow: hidden; background: var(--cielo); }
-.demo::before { content: ""; position: absolute; right: -80px; top: 60px; width: 360px; height: 360px; border-radius: 50%; background: var(--sol); }
-.demo::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 96px; background: var(--atlantico); }
-.demo .wrap { position: relative; z-index: 1; padding-top: clamp(72px, 10vw, 136px); padding-bottom: 176px; display: grid; gap: 28px; justify-items: start; }
-.demo h2 { max-width: 760px; font-size: clamp(38px, 5.4vw, 72px); line-height: 1; letter-spacing: -0.04em; }
-.demo .lead { color: var(--abismo); }
-.demo .fine { color: var(--abismo); }
+.demo { position: relative; overflow: hidden; isolation: isolate; color: var(--espuma);
+  background: radial-gradient(90% 80% at 90% 10%, #123B57 0%, transparent 60%), linear-gradient(170deg, #0E3450 0%, var(--abismo) 60%, #061B29 100%); }
+.demo .glow { position: absolute; border-radius: 50%; filter: blur(60px); z-index: -1; pointer-events: none; }
+.demo .g1 { width: 560px; height: 560px; right: -160px; top: -160px; background: radial-gradient(circle, var(--atlantico) 0%, rgba(26, 93, 180, .22) 60%, transparent 72%); }
+.demo .g2 { width: 520px; height: 420px; left: -180px; bottom: -160px; background: radial-gradient(circle, var(--laguna) 0%, rgba(15, 122, 117, .2) 62%, transparent 74%); }
+.demo .contours { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; fill: none; stroke: var(--cielo); stroke-width: 1; opacity: .7; pointer-events: none; }
+.demo .grain { position: absolute; inset: 0; z-index: -1; opacity: .14; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.demo .wrap { position: relative; z-index: 1; padding-top: clamp(72px, 10vw, 136px); padding-bottom: clamp(72px, 10vw, 136px); display: grid; gap: 28px; justify-items: start; }
+.demo h2 { color: var(--white); max-width: 760px; font-size: clamp(38px, 5.4vw, 72px); line-height: 1; letter-spacing: -0.04em; }
+.demo .lead { color: var(--cielo); }
+.demo > .wrap > .fine { color: rgba(216, 234, 246, .75); }
+.demo > .wrap > .fine a { color: var(--cielo); }
+.demo > .wrap > .fine a:hover { color: var(--white); }
+.demo .eyebrow { color: var(--sol); }
 @media (max-width: 700px) { .demo::before { width: 220px; height: 220px; right: -90px; top: auto; bottom: 120px; } }
 
 /* footer */
