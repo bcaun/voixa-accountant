@@ -5,6 +5,7 @@
 import nodemailer from 'nodemailer';
 import { config } from './config.js';
 import { tr } from './i18n.js';
+import { flushPush } from './push.js';
 import { pool, tx } from './db.js';
 import { appendEvent, lockCompany } from './ledger.js';
 
@@ -109,6 +110,8 @@ export async function sendDirect(to, subject, text, { replyTo } = {}) {
 let flushing = null;
 /** Send everything queued (and retry recent failures). Safe to call often. */
 export function flushEmails() {
+  // push notifications go out on the same occasions as emails
+  flushPush().catch((err) => console.error('push', err.message));
   flushing ??= (async () => {
     try {
       for (;;) {

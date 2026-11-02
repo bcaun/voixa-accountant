@@ -1,0 +1,16 @@
+{
+  "name": "Pescada",
+  "short_name": "Pescada",
+  "description": "Tracked document exchange between accounting firms and their clients.",
+  "id": "/",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F4F9FA",
+  "theme_color": "#0B2B3F",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

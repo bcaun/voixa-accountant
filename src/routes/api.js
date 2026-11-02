@@ -4,6 +4,7 @@ import { planImport, runImport } from '../import.js';
 import * as passkeys from '../passkeys.js';
 import * as oauth from '../oauth.js';
 import * as calendar from '../calendar.js';
+import * as push from '../push.js';
 import { latestFor } from '../timestamps.js';
 import { reportPdf } from '../reportpdf.js';
 import { sealOn } from '../seal.js';
@@ -392,6 +393,15 @@ api.get('/calendar', async (req, res) => {
 });
 api.get('/calendar/link', async (req, res) => res.json({ url: await calendar.calendarUrl(req.user) }));
 api.post('/calendar/link', async (req, res) => res.json({ url: await calendar.calendarUrl(req.user, { reset: true }) }));
+
+/* ---------- push notifications on this device ---------- */
+
+api.get('/push/key', async (req, res) => res.json({ key: (await push.vapidKeys()).publicKey }));
+api.post('/push/subscribe', json, async (req, res) => {
+  try { await push.subscribe(req.user, req.body?.subscription, req.get('user-agent')); } catch (err) { throw new HttpError(err.status || 500, err.message); }
+  res.json({ ok: true });
+});
+api.post('/push/unsubscribe', json, async (req, res) => { await push.unsubscribe(req.user, req.body?.endpoint); res.json({ ok: true }); });
 
 /* ---------- support ---------- */
 

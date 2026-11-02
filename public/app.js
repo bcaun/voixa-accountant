@@ -262,7 +262,8 @@ const NEWS = [
     'Tag your clients (for example “monthly VAT” or “restaurants”) and filter by tag, also when requesting from several clients.',
     'A calendar of every client’s deadlines, which you can also add to Google Calendar, Outlook or Apple Calendar.',
     'Each client shows this month at a glance: what was received, and what is still missing.',
-    'Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.'] },
+    'Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.',
+    'Install Pescada on your phone or computer, and get notifications on it: Your account → This device.'] },
   { date: '2026-11-02', items: [
     'Preview PDFs and photos without downloading them, and move between documents with ← and →.',
     'Import your clients from a spreadsheet, and request a document from several clients at once.',
@@ -565,6 +566,8 @@ async function accountModal() {
        <form id="mfaManage" novalidate style="display:grid;gap:10px"><div class="field"><label for="mm-code">${t('Current code from your app')}</label><input id="mm-code" class="input" inputmode="numeric" maxlength="6" style="font-family:var(--f-mono)"></div>
        <p class="err" id="mmErr" hidden></p><div class="dr-actions"><button class="btn" type="submit" data-do="recovery">${t('New recovery codes')}</button><button class="btn" type="submit" data-do="disable">${t('Turn off')}</button></div></form>`
     : setupBlock(`<p>${acc ? t('You see the documents of every client of the firm. A code from an authenticator app at sign-in keeps them safe even if someone gets into your email.') : t('Add a code from an authenticator app to your sign-in.')}</p>`)}
+    <h3 style="margin-top:8px">${t('This device')}</h3>
+    <div id="thisDevice" style="display:grid;gap:8px"></div>
     <h3 style="margin-top:8px">${t('Sign-in methods')}</h3>
     <div id="signinMethods"><p class="loading" style="padding:4px 0">${t('Loading…')}</p></div>
     <h3 style="margin-top:8px">${t('Where you are signed in')}</h3>
@@ -574,6 +577,7 @@ async function accountModal() {
   </div>`);
   if (!acc) { $('#ac-mode').closest('.grid2').hidden = true; $('#ac-mode').closest('form').querySelector('.sub').hidden = true; }
   renderSigninMethods();
+  renderDevice();
 }
 async function renderSigninMethods() {
   const box = $('#signinMethods'); if (!box) return;
@@ -1659,7 +1663,11 @@ document.addEventListener('click', async (e) => {
     case 'all-items': (S.allItems ||= {})[S.route.c] = true; await refresh(); break;
     case 'close-drawer': go(S.route.c); break;
     case 'close-modal': closeModal(); break;
-    case 'logout': await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); break;
+    case 'logout': {
+      // a shared computer should not keep getting this person's notifications
+      try { const reg = await Promise.race([navigator.serviceWorker?.ready, new Promise((r) => setTimeout(r, 800))]); const sub = await reg?.pushManager?.getSubscription(); if (sub) { await api('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }); await sub.unsubscribe(); } } catch { /* signed out anyway */ }
+      await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); break;
+    }
     case 'login-again': history.replaceState(null, '', '#/'); renderLogin(); break;
     case 'opened-file': setTimeout(refresh, 1500); break;
     case 'preview': { const id = S.route.i; S.preview = S.preview === id ? null : id; renderDrawer(); if (S.preview) setTimeout(refresh, 1500); break; }
@@ -1716,6 +1724,9 @@ document.addEventListener('click', async (e) => {
     case 'pro-feature': proModal(b.dataset.what || ''); break;
     case 'import-clients': importModal(); break;
     case 'help': helpModal(); break;
+    case 'pwa-install': if (S.installPrompt) { S.installPrompt.prompt(); await S.installPrompt.userChoice.catch(() => {}); S.installPrompt = null; renderDevice(); } break;
+    case 'push-on': try { await pushOn(); } catch (err) { toast(t(err.message)); } renderDevice(); break;
+    case 'push-off': try { await pushOff(); } catch (err) { toast(t(err.message)); } renderDevice(); break;
     case 'qo-pick': qoGo(S.qo.items[Number(b.dataset.i)]); break;
     case 'cal-subscribe': calendarModal(false); break;
     case 'cal-reset': if (confirm(t('Make a new link? Calendars using the old one will stop updating.'))) calendarModal(true); break;
@@ -1815,6 +1826,48 @@ async function poll() {
 setInterval(poll, 20000);
 
 /* ---------- start ---------- */
+/* ---------- installed app (PWA) and notifications on this device ---------- */
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installPrompt = e; });
+const b64ToBytes = (s) => Uint8Array.from(atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+async function pushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return isIOS() && !standalone() ? 'install-first' : 'unsupported';
+  if (Notification.permission === 'denied') return 'blocked';
+  const reg = await navigator.serviceWorker.ready;
+  return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+}
+async function pushOn() {
+  if (await Notification.requestPermission() !== 'granted') return toast(t('Notifications are blocked for Pescada in this browser’s settings.'));
+  const reg = await navigator.serviceWorker.ready;
+  const { key } = await api('/push/key');
+  const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+  await api('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+  toast(t('Notifications are on for this device.'));
+}
+async function pushOff() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) { await api('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {}); await sub.unsubscribe(); }
+  toast(t('Notifications are off for this device.'));
+}
+async function renderDevice() {
+  const box = $('#thisDevice'); if (!box) return;
+  const st = await pushState().catch(() => 'unsupported');
+  const install = standalone() ? `<p class="sub">${t('Pescada is installed on this device.')}</p>`
+    : S.installPrompt ? `<div><button class="btn" data-act="pwa-install">${t('Install Pescada on this device')}</button></div>`
+      : isIOS() ? `<p class="sub">${t('To install Pescada on this iPhone or iPad: open it in Safari, tap Share, then Add to Home Screen.')}</p>`
+        : /Mac/.test(navigator.platform) && /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent) ? `<p class="sub">${t('To install Pescada on this Mac: in Safari choose File → Add to Dock.')}</p>`
+          : `<p class="sub">${t('You can install Pescada from your browser’s menu (Install app), to open it like any other app.')}</p>`;
+  const push = { on: `<p class="sub">${t('Notifications are on for this device.')}</p><div><button class="btn" data-act="push-off">${t('Turn off')}</button></div>`,
+    off: `<p class="sub">${t('Get a notification on this device for the same events as your emails.')}</p><div><button class="btn" data-act="push-on">${t('Turn on notifications')}</button></div>`,
+    blocked: `<p class="sub">${t('Notifications are blocked for Pescada in this browser’s settings.')}</p>`,
+    'install-first': `<p class="sub">${t('On iPhone and iPad, notifications work once Pescada is installed on the Home Screen.')}</p>`,
+    unsupported: `<p class="sub">${t('This browser cannot show notifications from Pescada.')}</p>` }[st];
+  box.innerHTML = install + push;
+}
+
 (async () => {
   let me;
   try {

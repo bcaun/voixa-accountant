@@ -2,6 +2,7 @@
 // inside the caller's transaction, writes its evidence events, refreshes the
 // item's cached status and queues the notification emails.
 import { firmLogoUrl } from './billing.js';
+import { queuePush } from './push.js';
 import { config } from './config.js';
 import { appendEvent } from './ledger.js';
 import { queueEmail, renderEmail, clientPromo } from './mailer.js';
@@ -100,6 +101,7 @@ export async function notify(c, { company, item, side, kind, msg, exceptUserId }
     const { html, text } = renderEmail({ heading, lines, button: { label: item ? t('Open in Pescada') : t('Open the workspace'), url }, logo: logoUrl && { url: logoUrl, alt: company.firm_name }, promo: u.role === 'client' ? clientPromo(lang) : null,
       footer: t('{firm} · Pescada. This message and every action on the document are recorded in the workspace log.', { firm: company.firm_name }) });
     await queueEmail(c, { companyId: company.id, itemId: item?.id, toUserId: u.id, toEmail: u.email, kind, subject, html, text });
+    await queuePush(c, { userId: u.id, title: subject, body: lines[0] || heading, url: `/#/c/${company.id}${item ? `/i/${item.id}` : ''}` });
   }
 }
 

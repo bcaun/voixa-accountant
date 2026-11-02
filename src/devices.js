@@ -57,6 +57,7 @@ export async function revokeFromAlert(token) {
       `update signin_alerts set used_at = now() where token_hash = $1 and used_at is null and expires_at > now() returning user_id`, [sha256(String(token || ''))]);
     if (!a) return null;
     await c.query('delete from sessions where user_id = $1', [a.user_id]);
+    await c.query('delete from push_subscriptions where user_id = $1', [a.user_id]); // no more notifications to unknown devices
     await c.query('update login_tokens set used_at = now() where user_id = $1 and used_at is null', [a.user_id]);
     const { rows: [u] } = await c.query('select id, name, email, firm_id from users where id = $1', [a.user_id]);
     if (u?.firm_id) {
