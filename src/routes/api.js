@@ -8,7 +8,7 @@ import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { accountingExport, exportKinds } from '../exports.js';
-import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft, aiReadingAllowed } from '../billing.js';
+import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft, aiReadingAllowed, companyHasPro, requirePro } from '../billing.js';
 import { feedsOn, institutions, connect as connectBank, removeConnection } from '../bankfeeds.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
@@ -118,7 +118,7 @@ api.get('/me', async (req, res) => {
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
   const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, tier, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
-  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn(), aiReading: aiReadingAllowed(firm) });
+  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn(), aiReading: aiReadingAllowed(firm), pro: aiReadingAllowed(firm) });
   const lang = u.lang || langOfCountry(firm?.country || rows[0]?.country);
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, lang, langChosen: u.lang || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
@@ -298,7 +298,7 @@ api.get('/billing', async (req, res) => {
   res.json({ plan: f.plan, tier: f.tier, trialEndsAt: f.trial_ends_at, trialDaysLeft: trialDaysLeft(f), onlinePayment: billingOn(),
     proOnline: billingOn() && !!config.stripe.priceIdPro, hasCustomer: f.has_customer, aiReading: aiReadingAllowed(f) });
 });
-api.post('/billing/checkout', json, async (req, res) => { requireAdmin(req.user); res.json({ url: await checkoutUrl(req.user, req.body?.tier || 'standard') }); });
+api.post('/billing/checkout', json, async (req, res) => { requireAdmin(req.user); res.json({ url: await checkoutUrl(req.user, req.body?.tier || 'essential') }); });
 api.post('/billing/portal', async (req, res) => { requireAdmin(req.user); res.json({ url: await portalUrl(req.user) }); });
 
 /* ---------- my sessions ---------- */
@@ -449,7 +449,7 @@ async function companyState(user, company, { days = 120 } = {}) {
   const vMap = byItem(vers.rows), eMap = byItem(emails.rows), evMap = byItem(evs.rows);
   return {
     company: { id: company.id, no: company.no, name: company.name, nif: company.nif, city: company.city, country: company.country,
-      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at ? null : inboundAddress(company),
+      tz: tzOf(company.country), taxIdLabel: countryOf(company.country).taxIdLabel, created_at: company.created_at, inbound_address: company.closed_at || !companyHasPro(company) ? null : inboundAddress(company), pro: companyHasPro(company),
       closed_at: company.closed_at, export_until: company.export_until, purge_after: company.purge_after },
     firm: company.firm_name,
     seq: Number(company.head_seq),
@@ -689,14 +689,16 @@ api.get('/companies/:id/bank', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
   const { rows } = await query(`select id, institution_name, status, accounts, linked_at, expires_at, last_sync_at, last_error from bank_connections
                                 where company_id = $1 and status <> 'removed' order by created_at desc`, [company.id]);
-  res.json({ enabled: feedsOn(), connections: rows.map((r) => ({ ...r, accounts: r.accounts.map((a) => ({ iban: a.iban ? `${a.iban.slice(0, 4)} …${a.iban.slice(-4)}` : null, currency: a.currency })) })) });
+  res.json({ enabled: feedsOn(), pro: companyHasPro(company), connections: rows.map((r) => ({ ...r, accounts: r.accounts.map((a) => ({ iban: a.iban ? `${a.iban.slice(0, 4)} …${a.iban.slice(-4)}` : null, currency: a.currency })) })) });
 });
 api.get('/companies/:id/bank/institutions', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
+  requirePro(company, 'Fetching statements from the bank');
   res.json({ institutions: await institutions(company.country) });
 });
 api.post('/companies/:id/bank/connect', json, async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
+  requirePro(company, 'Fetching statements from the bank');
   res.json({ url: await connectBank({ user: req.user, company, institutionId: str(req.body?.institutionId, 100) }) });
 });
 api.delete('/companies/:id/bank/:cid', async (req, res) => {
@@ -711,6 +713,7 @@ api.delete('/companies/:id/bank/:cid', async (req, res) => {
 api.get('/companies/:id/accounting-export', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);
   if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can export for accounting software.');
+  requirePro(company, 'Exporting for accounting software');
   const kind = String(req.query.kind || '');
   if (!exportKinds(company.country).includes(kind)) throw new HttpError(400, `Choose one of: ${exportKinds(company.country).join(', ')}.`);
   const d = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);

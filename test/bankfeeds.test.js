@@ -70,7 +70,7 @@ async function as(email) {
 const ctx = {};
 
 test('the client picks their bank and is sent to it to authorise access', async () => {
-  const { rows: [f] } = await pool.query(`insert into firms (name, country) values ('Voixa', 'ES') returning id`);
+  const { rows: [f] } = await pool.query(`insert into firms (name, country, tier) values ('Voixa', 'ES', 'pro') returning id`);
   await pool.query(`insert into users (email, name, role, firm_id) values ('elena@voixa.es', 'Elena', 'accountant', $1)`, [f.id]);
   ctx.acc = await as('elena@voixa.es');
   ctx.co = (await ctx.acc('POST', '/companies', { name: 'Sol y Mar SL', nif: 'B56781234', contactEmail: 'daniel@solymar.es' }, 201)).id;
@@ -120,4 +120,17 @@ test('when the bank access ends, the client is asked to reconnect; a connection 
   const id = (await ctx.cl('GET', `/companies/${ctx.co}/bank`)).connections[0].id;
   await ctx.cl('DELETE', `/companies/${ctx.co}/bank/${id}`);
   assert.equal((await ctx.cl('GET', `/companies/${ctx.co}/bank`)).connections.length, 0);
+});
+
+test('on the Essential plan the bank, the email address and exports are Pro features', async () => {
+  await pool.query(`update firms set tier = 'essential', plan = 'active'`);
+  const ws = await ctx.acc('GET', `/companies/${ctx.co}`);
+  assert.deepEqual([ws.company.pro, ws.company.inbound_address], [false, null]);
+  assert.equal((await ctx.cl('GET', `/companies/${ctx.co}/bank`)).pro, false);
+  const r = await ctx.cl('POST', `/companies/${ctx.co}/bank/connect`, { institutionId: 'CAIXABANK_CAIXESBB' }, 403);
+  assert.equal(r.code, 'pro');
+  assert.equal((await ctx.acc('GET', `/companies/${ctx.co}/accounting-export?kind=invoices`, undefined, 403)).code, 'pro');
+  assert.equal((await ctx.acc('GET', '/me')).firmInfo.pro, false);
+  await pool.query(`update firms set tier = 'pro'`);
+  assert.equal((await ctx.acc('GET', `/companies/${ctx.co}`)).company.pro, true);
 });

@@ -313,14 +313,22 @@ async function billingModal() {
   let b;
   try { b = await api('/billing'); } catch (err) { return toast(err.message); }
   const label = { trial: b.trialDaysLeft != null ? tn(b.trialDaysLeft, 'Free trial, {n} day left', 'Free trial, {n} days left') : t('Free trial'), active: t('Subscribed'), past_due: t('Payment failed'), canceled: t('Cancelled'), internal: t('Included') }[b.plan];
-  const tierName = b.tier === 'pro' ? t('Pro') : t('Standard');
+  const tierName = b.tier === 'pro' ? t('Pro') : t('Essential');
   openModal(`${modalHead(t('Subscription'))}<div class="modal-b"><p><b>${label}</b>${b.plan === 'trial' ? '' : ` · ${t('Plan: {tier}', { tier: tierName })}`}</p>
-    <p class="sub">${t('Standard reads bank files (camt.053, MT940, CFONB 120, Norma 43, CSV) and e-invoices exactly. Pro also reads PDFs and photos of statements and invoices with AI.')}${b.plan === 'trial' ? ` ${t('During the trial everything is included.')}` : ''}</p>
+    <p class="sub">${t('Essential includes everything needed to work with clients: tracked exchange, requests and deadlines, reminders, bank files and e-invoices read exactly. Pro adds the time-savers: PDFs and photos read by AI, statements fetched from the bank, an email address per client, exports to accounting software.')}${b.plan === 'trial' ? ` ${t('During the trial everything is included.')}` : ''}</p>
     ${b.onlinePayment ? `<p class="sub">${t('Payment is handled by Stripe. Pescada never sees your card.')}</p>
-      <div class="dr-actions">${b.plan !== 'active' ? `<button class="btn ${b.proOnline ? '' : 'primary'}" data-act="checkout" data-tier="standard">${t('Subscribe to Standard')}</button>${b.proOnline ? `<button class="btn primary" data-act="checkout" data-tier="pro">${t('Subscribe to Pro')}</button>` : ''}` : ''}${b.hasCustomer ? `<button class="btn" data-act="portal">${t('Card, invoices and cancellation')}</button>` : ''}</div>
-      ${b.plan === 'active' && b.proOnline ? `<p class="sub" style="margin-top:10px">${t('To switch between Standard and Pro, open “Card, invoices and cancellation”.')}</p>` : ''}`
+      <div class="dr-actions">${b.plan !== 'active' ? `<button class="btn ${b.proOnline ? '' : 'primary'}" data-act="checkout" data-tier="essential">${t('Subscribe to Essential')}</button>${b.proOnline ? `<button class="btn primary" data-act="checkout" data-tier="pro">${t('Subscribe to Pro')}</button>` : ''}` : ''}${b.hasCustomer ? `<button class="btn" data-act="portal">${t('Card, invoices and cancellation')}</button>` : ''}</div>
+      ${b.plan === 'active' && b.proOnline ? `<p class="sub" style="margin-top:10px">${t('To switch between Essential and Pro, open “Card, invoices and cancellation”.')}</p>` : ''}`
     : `<p class="sub">${t('Online payment is not set up yet. Write to {email} to subscribe.', { email: '<a href="mailto:hello@pescada.io">hello@pescada.io</a>' })}</p>`}</div>`);
 }
+
+/** Shown when an Essential firm reaches for a Pro feature. */
+function proModal(what) {
+  openModal(`${modalHead(t('Pro plan'))}<div class="modal-b"><p><b>${esc(what)}</b> · ${t('This is part of the Pro plan.')}</p>
+    <p class="sub">${t('Essential includes everything needed to work with clients: tracked exchange, requests and deadlines, reminders, bank files and e-invoices read exactly. Pro adds the time-savers: PDFs and photos read by AI, statements fetched from the bank, an email address per client, exports to accounting software.')}</p>
+    <div class="dr-actions">${isAdmin() ? `<button class="btn primary" data-act="billing">${t('See plans')}</button>` : `<span class="sub">${t('Ask your firm’s administrator about the Pro plan.')}</span>`}</div></div>`);
+}
+const proPill = () => `<span class="pill warn" style="margin-left:6px">${t('Pro')}</span>`;
 
 /* ---------- two-step sign-in ---------- */
 function renderMfaCode() {
@@ -755,7 +763,7 @@ function bankView() {
     : t('Bank statements and invoices are read automatically when they are uploaded. Bank files (Norma 43, CFONB 120, MT940, camt.053, CSV) and e-invoices (FatturaPA, XRechnung / UBL, Factur-X / ZUGFeRD) are read exactly; other PDFs and photos are read by AI, so check important figures against the file. Payments are matched to invoices by invoice number, amount, counterparty and date; your accountant confirms each match.');
   return `<p class="note">${note}</p>
     ${r.pending.length ? `<div class="chain"><p>${tn(r.pending.length, 'Reading {n} file…', 'Reading {n} files…')}</p></div>` : ''}
-    ${S.me.role === 'accountant' ? `<div style="margin-bottom:12px"><button class="btn small" data-act="acc-export">${t('Export for accounting software')}</button></div>` : ''}
+    ${S.me.role === 'accountant' ? `<div style="margin-bottom:12px"><button class="btn small" data-act="${S.ws.company.pro ? 'acc-export' : 'pro-feature'}" data-what="${esc(t('Export for accounting software'))}">${t('Export for accounting software')}${S.ws.company.pro ? '' : proPill()}</button></div>` : ''}
     ${S.features?.bankFeeds ? bankFeedsBlock() : ''}
     <div class="stack" style="gap:10px">${stItems || `<div class="empty">${t('No bank statements read yet. Upload one as “{type}”: {formats}.', { type: t('Bank statement'), formats: esc(COUNTRY(S.ws?.company.country).bankFormats) })}</div>`}</div>
     <div class="section-h" style="margin-top:22px"><h3>${t('Transactions')}</h3><div class="presets">
@@ -843,7 +851,8 @@ function peopleView() {
     ${p.id === S.me.id ? `<span class="pill muted">${t('You')}</span>` : `<button class="btn small" data-act="remove-member" data-id="${p.id}" data-name="${esc(p.name || p.email)}">${t('Remove access')}</button>`}</div>`).join('');
   const addr = w.company.inbound_address;
   return `<p class="note">${t('Everyone listed here can send and receive documents for {company}. They sign in with a link sent to their email.', { company: esc(w.company.name) })} ${S.me.role === 'client' ? t('Your accountants at {firm} also see this workspace.', { firm: esc(w.firm) }) : ''}
-    ${addr ? t('They can also email documents to {address}; only mail from the addresses listed here is accepted.', { address: `<b class="mono" style="font-size:13px">${esc(addr)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(addr)}">${t('Copy')}</button>` }) : ''}</p>
+    ${addr ? t('They can also email documents to {address}; only mail from the addresses listed here is accepted.', { address: `<b class="mono" style="font-size:13px">${esc(addr)}</b> <button type="button" class="linkbtn" data-act="copy" data-text="${esc(addr)}">${t('Copy')}</button>` })
+      : !w.company.pro && S.me.role === 'accountant' && !w.company.closed_at ? `${t('With Pro, each client also gets an email address for forwarding documents.')} <button type="button" class="linkbtn" data-act="pro-feature" data-what="${esc(t('Email address for documents'))}">${t('See what Pro adds')}</button>` : ''}</p>
     <div class="people">${people || `<div class="empty">${t('Nobody has access yet. Invite the first person below.')}</div>`}</div>
     <form class="inline-form" id="memberForm" novalidate style="margin-top:14px"><h3>${t('Invite a person')}</h3>
       <div class="grid2"><div class="field"><label for="mb-name">${t('Name')}</label><input id="mb-name" class="input" autocomplete="off"></div>
@@ -1026,6 +1035,13 @@ function clientModal(edit) {
       <div><button class="btn" type="button" data-act="close-client">${t('Close this client…')}</button></div></div>` : ''}`);
 }
 function bankFeedsBlock() {
+  if (!S.ws.company.pro) {
+    // clients are not shown the upsell; accountants see what Pro would add
+    if (S.me.role !== 'accountant') return '';
+    return `<section class="inline-form" style="margin-bottom:16px"><h3>${t('Automatic bank statements')}${proPill()}</h3>
+      <p class="sub" style="font-size:13.5px">${t('Connect a bank account once and new movements arrive here by themselves, read and matched like an uploaded statement. Access is read-only, through a licensed open banking provider, and lasts 90 days at a time.')}</p>
+      <div><button class="btn small" data-act="pro-feature" data-what="${esc(t('Automatic bank statements'))}">${t('See what Pro adds')}</button></div></section>`;
+  }
   if (!S.bank || S.bank.id !== S.route.c) { S.bank = { id: S.route.c, connections: null }; api(`/companies/${S.route.c}/bank`).then((r) => { if (S.bank?.id === S.route.c) { S.bank.connections = r.connections; renderData(); } }).catch(() => {}); }
   const cs = S.bank.connections;
   const st = { pending: ['warn', t('Waiting for the bank')], linked: ['ok', t('Connected')], expired: ['bad', t('Access ended: connect again')], error: ['bad', t('Not authorised')] };
@@ -1348,6 +1364,7 @@ document.addEventListener('click', async (e) => {
     case 'copy': try { await navigator.clipboard.writeText(b.dataset.text); toast(t('Copied.')); } catch { toast(b.dataset.text); } break;
     case 'close-client': closeClientModal(); break;
     case 'acc-export': exportModal(); break;
+    case 'pro-feature': proModal(b.dataset.what || ''); break;
     case 'bank-connect': bankConnectModal(); break;
     case 'bank-remove': if (confirm(t('Disconnect this bank? Statements already fetched stay.'))) { try { await api(`/companies/${S.route.c}/bank/${b.dataset.id}`, { method: 'DELETE' }); S.bank = null; toast(t('Bank disconnected.')); renderData(); } catch (err) { toast(err.message); } } break;
     case 'reopen-client': if (confirm(t('Reopen this client? Their people can sign in again.'))) await act(`/companies/${S.route.c}/reopen`, {}, t('Client reopened.')); break;

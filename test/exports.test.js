@@ -45,7 +45,7 @@ async function as(email) {
 const file = (cat, name, content) => { const f = new FormData(); f.append('category', cat); f.append('files', new Blob([content]), name); return f; };
 
 test('a German client: invoice register, bank movements and a DATEV booking batch', async () => {
-  const { rows: [f] } = await pool.query(`insert into firms (name, country) values ('Kanzlei Weber', 'DE') returning id`);
+  const { rows: [f] } = await pool.query(`insert into firms (name, country, tier) values ('Kanzlei Weber', 'DE', 'pro') returning id`);
   await pool.query(`insert into users (email, name, role, firm_id) values ('anna@weber.de', 'Anna', 'accountant', $1)`, [f.id]);
   const acc = await as('anna@weber.de');
   const co = (await acc('POST', '/companies', { name: 'Bäckerei Schmidt GmbH', nif: 'DE811907980', contactEmail: 'jonas@schmidt.de' }, 201)).id;

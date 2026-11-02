@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { config } from './config.js';
+import { companyHasPro } from './billing.js';
 import { tx } from './db.js';
 import { storage } from './storage.js';
 import { scanStored } from './antivirus.js';
@@ -61,6 +62,7 @@ export async function handleInbound(p) {
         text: `An email to the workspace address from ${from || 'an unknown sender'} (“${subject}”) was refused: ${why}`, data: { from, subject, reason: why } });
       return { status: 'refused', reason: why };
     };
+    if (!companyHasPro(company)) return refuse('the workspace email address is part of the Pro plan, and the firm is not on Pro');
     if (!member) return refuse('the sender is not one of the people with access to this workspace');
     if (config.mail.inboundRequireAuth && !senderAuthenticated(p.Headers)) return refuse('the sender’s domain did not pass SPF or DKIM, so the sender cannot be confirmed');
     if (!atts.length) return refuse('it had no attachments');

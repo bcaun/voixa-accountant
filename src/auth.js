@@ -133,7 +133,7 @@ export const actorOf = (user) => ({ type: user.role, id: user.id, name: user.nam
 export const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v));
 
 /** A company row with its firm's name and country, as every module expects it. */
-export const COMPANY_SQL = 'select c.*, f.name as firm_name, f.country as firm_country from companies c join firms f on f.id = c.firm_id';
+export const COMPANY_SQL = 'select c.*, f.name as firm_name, f.country as firm_country, f.plan as firm_plan, f.tier as firm_tier from companies c join firms f on f.id = c.firm_id';
 
 /** Accountants reach only their own firm's clients; client users only the companies they are members of. */
 /**

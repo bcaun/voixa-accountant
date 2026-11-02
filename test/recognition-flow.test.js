@@ -216,9 +216,9 @@ test('the evidence log still verifies after recognition and matching', async () 
   assert.equal(v.ok, true);
 });
 
-test('on the Standard plan PDFs are not sent to AI, bank files still are read; the trial includes AI', async () => {
+test('on the Essential plan PDFs are not sent to AI, bank files still are read; the trial includes AI', async () => {
   config.recognition.monthlyBudgetUsd = 0;
-  const { rows: [f] } = await pool.query(`update firms set tier = 'standard' returning id`);
+  const { rows: [f] } = await pool.query(`update firms set tier = 'essential' returning id`);
   const before = aiCalls.length;
   let n = 0;
   const calls = () => n;
@@ -226,7 +226,7 @@ test('on the Standard plan PDFs are not sent to AI, bank files still are read; t
   await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Invoice', 'standard.pdf', '%PDF-1.4 standard'), 201);
   await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Bank statement', 'extracto-oct.n43', SAMPLE_N43, 'text/plain'), 201);
   await processJobs(); await processJobs();
-  assert.equal(calls(), 0, 'no AI call on Standard');
+  assert.equal(calls(), 0, 'no AI call on Essential');
   const r = await rec();
   assert.ok(r.extractions.some((e) => e.status === 'unsupported' && /part of the Pro plan/.test(e.error)));
   assert.equal(r.extractions.filter((e) => e.method === 'norma43').length >= 2, true, 'Norma 43 is read on every plan');

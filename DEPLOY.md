@@ -204,13 +204,16 @@ PT → португальский, остальные → английский. 
 3. `deploy/.env`:
    ```
    STRIPE_SECRET_KEY=...
-   STRIPE_PRICE_ID=price_...
+   STRIPE_PRICE_ID=price_...       # Pescada Essential
    STRIPE_WEBHOOK_SECRET=whsec_...
    STRIPE_QUANTITY=clients     # или firm — одна подписка на фирму
-   STRIPE_PRICE_ID_PRO=price_...   # цена тарифа Pro (чтение PDF и фото через ИИ)
+   STRIPE_PRICE_ID_PRO=price_...   # Pescada Pro
    ```
-   **Тарифы.** Standard точно читает банковские файлы (camt.053, MT940, CFONB 120, Norma 43, CSV) и
-   электронные счета. Pro дополнительно читает PDF и фото через ИИ. В пробный период включено всё.
+   **Тарифы.** Essential — весь обмен документами, журнал, запросы, сроки, напоминания, команда,
+   точное чтение банковских файлов (camt.053, MT940, CFONB 120, Norma 43, CSV) и электронных счетов.
+   Pro добавляет: чтение PDF и фото через ИИ, выписки напрямую из банка, почтовый адрес для каждого
+   клиента, выгрузки в бухгалтерские программы. В пробный период включено всё. Фирма на Essential
+   видит эти функции с меткой «Pro» и объяснением; клиентам метки не показываются.
    Чтобы фирмы могли сами переходить между тарифами: Stripe → Settings → Billing → Customer portal →
    Subscriptions → разрешить смену тарифа и добавить обе цены. Тариф в Pescada меняется по webhook.
    Вручную: `docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js set-tier --firm "Название" --tier pro`
@@ -222,7 +225,7 @@ PT → португальский, остальные → английский. 
 
 1. Зарегистрируйтесь в GoCardless Bank Account Data, получите Secret ID и Secret Key.
 2. `deploy/.env`: `GOCARDLESS_SECRET_ID=...`, `GOCARDLESS_SECRET_KEY=...`, перезапуск.
-Клиент подключает банк в своём пространстве; движения приходят выписками каждые 12 часов
+Только в тарифе Pro (и в пробный период). Клиент подключает банк в своём пространстве; движения приходят выписками каждые 12 часов
 (`BANK_FEED_SYNC_HOURS`). Через 90 дней банк требует повторного подтверждения — клиент получает письмо.
 GoCardless и Stripe уже указаны в списке субподрядчиков сайта с 1 декабря 2026.
 

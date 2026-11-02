@@ -155,7 +155,9 @@ async function expire(conn) {
 /** Scheduler: sync every linked connection not synced in the last BANK_FEED_SYNC_HOURS. */
 export async function syncAll(now = new Date()) {
   if (!feedsOn()) return 0;
-  const { rows } = await pool.query(`select id from bank_connections where status = 'linked' and (last_sync_at is null or last_sync_at < $1)`,
+  // only firms whose plan includes it (Pro, or the trial); connections of other firms wait
+  const { rows } = await pool.query(`select b.id from bank_connections b join companies c on c.id = b.company_id join firms f on f.id = c.firm_id
+     where b.status = 'linked' and (b.last_sync_at is null or b.last_sync_at < $1) and (f.tier = 'pro' or f.plan = 'trial')`,
     [new Date(now.getTime() - config.bankFeeds.syncHours * 36e5)]);
   let n = 0;
   for (const r of rows) { try { n += await syncConnection(r.id, now); } catch (err) { console.error('bank feed', r.id, err.message); } }

@@ -15,11 +15,20 @@ import { alert } from './alerts.js';
 
 const DAY = 864e5;
 export const billingOn = () => !!(config.stripe.secretKey && config.stripe.priceId);
-export const TIERS = ['standard', 'pro'];
+export const TIERS = ['essential', 'pro'];
 
-/** PDFs and photos are read by AI on the Pro plan, and during the trial so firms can try it. */
-export const aiReadingAllowed = (f) => !f || f.tier === 'pro' || f.plan === 'trial';
-const tierOfPrice = (priceId) => (priceId && priceId === config.stripe.priceIdPro ? 'pro' : 'standard');
+/**
+ * Pro features: PDFs and photos read by AI, statements fetched from the bank, a forwarding email
+ * address per client, exports for accounting software. Included during the trial so firms can try them.
+ */
+export const proIncluded = (f) => !f || f.tier === 'pro' || f.plan === 'trial';
+export const aiReadingAllowed = proIncluded;
+/** The same for a company row from COMPANY_SQL, which carries its firm's plan. */
+export const companyHasPro = (co) => proIncluded({ tier: co.firm_tier, plan: co.firm_plan });
+export function requirePro(co, what) {
+  if (!companyHasPro(co)) throw Object.assign(new HttpError(403, `${what} is part of the Pro plan.`), { code: 'pro' });
+}
+const tierOfPrice = (priceId) => (priceId && priceId === config.stripe.priceIdPro ? 'pro' : 'essential');
 
 /** Can this firm's accountants change things? Internal and paying firms always; trials until they end. */
 export function firmActive(f) {
@@ -153,7 +162,7 @@ async function quantityFor(firmId) {
 }
 
 /** A Stripe Checkout page for the firm's subscription. */
-export async function checkoutUrl(user, tier = 'standard') {
+export async function checkoutUrl(user, tier = 'essential') {
   if (!billingOn()) throw new HttpError(503, 'Online payment is not set up yet. Write to hello@pescada.io to subscribe.');
   if (!TIERS.includes(tier)) throw new HttpError(400, 'Choose a plan.');
   const price = tier === 'pro' ? config.stripe.priceIdPro : config.stripe.priceId;
@@ -197,9 +206,9 @@ export async function handleStripeEvent(ev) {
     const firmId = o.client_reference_id || o.metadata?.firm_id;
     if (!firmId) return false;
     await tx(async (c) => {
-      const tier = TIERS.includes(o.metadata?.tier) ? o.metadata.tier : 'standard';
+      const tier = TIERS.includes(o.metadata?.tier) ? o.metadata.tier : 'essential';
       await c.query(`update firms set plan = 'active', tier = $4, stripe_customer_id = $2, stripe_subscription_id = $3 where id = $1`, [firmId, o.customer, o.subscription, tier]);
-      await firmEvent(c, firmId, null, 'subscribed', `The firm subscribed to Pescada ${tier === 'pro' ? 'Pro' : 'Standard'}`);
+      await firmEvent(c, firmId, null, 'subscribed', `The firm subscribed to Pescada ${tier === 'pro' ? 'Pro' : 'Essential'}`);
     });
     return true;
   }
@@ -210,7 +219,7 @@ export async function handleStripeEvent(ev) {
     const { rows: [f] } = await pool.query(
       `update firms set plan = $2, stripe_subscription_id = $3, tier = coalesce($4, tier) where stripe_customer_id = $1 returning id, tier`,
       [o.customer, plan, o.id, price ? tierOfPrice(price) : null]);
-    if (f) await firmEvent({ query }, f.id, null, 'subscription_' + plan, `Subscription status: ${plan}, plan ${f.tier === 'pro' ? 'Pro' : 'Standard'}`);
+    if (f) await firmEvent({ query }, f.id, null, 'subscription_' + plan, `Subscription status: ${plan}, plan ${f.tier === 'pro' ? 'Pro' : 'Essential'}`);
     return !!f;
   }
   if (ev.type === 'invoice.payment_failed') {

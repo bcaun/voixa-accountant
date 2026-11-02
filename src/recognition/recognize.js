@@ -8,7 +8,7 @@ import { storage } from '../storage.js';
 import { SYSTEM } from '../items.js';
 import { COMPANY_SQL } from '../auth.js';
 import { AiError, aiAvailable as serverHasAi, readWithAi } from './ai.js';
-import { aiReadingAllowed } from '../billing.js';
+import { companyHasPro } from '../billing.js';
 import { costOf } from './pricing.js';
 import { looksLikeNorma43, parseNorma43 } from './norma43.js';
 import { looksLikeCamt053, parseCamt053 } from './camt053.js';
@@ -214,8 +214,7 @@ async function recognise(job) {
   if (!ctx) return;
   const { item, version, company } = ctx;
   job.country = company.country;
-  const { rows: [firm] } = await pool.query('select plan, tier from firms where id = $1', [company.firm_id]);
-  job.aiAllowed = aiReadingAllowed(firm);
+  job.aiAllowed = companyHasPro(company);
   const buf = await readAll(await storage.get(version.storage_key));
   const type = sniff(buf, version.file_name);
   let result;

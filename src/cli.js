@@ -2,7 +2,7 @@
 // npm run create-accountant -- --email elena@voixa.es --name "Elena Ruiz" [--firm "Voixa Accounting"]
 // npm run login-link -- --email elena@voixa.es      (prints a one-time sign-in link)
 // node src/cli.js list-firms
-// node src/cli.js set-tier --firm "Studio Rossi" --tier pro      (standard | pro: Pro adds AI reading of PDFs and photos)
+// node src/cli.js set-tier --firm "Studio Rossi" --tier pro      (essential | pro: Pro adds AI reading, bank feeds, email-in, exports)
 import { parseArgs } from 'node:util';
 import { pool } from './db.js';
 import { migrate } from './migrate.js';
@@ -27,8 +27,8 @@ async function findFirm(ref) {
 async function createFirm(name, cc) {
   if (!name) throw new Error('Pass --name');
   if (!isCountry(cc)) throw new Error(`Pass --country, one of: ${COUNTRY_CODES.join(', ')}`);
-  const tier = values.tier || 'standard';
-  if (!['standard', 'pro'].includes(tier)) throw new Error('Pass --tier standard or --tier pro');
+  const tier = values.tier || 'essential';
+  if (!['essential', 'pro'].includes(tier)) throw new Error('Pass --tier essential or --tier pro');
   const { rows: [f] } = await pool.query('insert into firms (name, country, tier) values ($1, $2, $3) returning *', [name, cc, tier]);
   return f;
 }
@@ -53,10 +53,10 @@ try {
     console.log(`${rows.length} clients, ${entries} log entries, ${counts.items} items, ${counts.files} file versions, ${counts.firms} firms: ${bad ? `${bad} BROKEN` : 'every log verifies'}`);
     if (bad) process.exitCode = 2;
   } else if (cmd === 'set-tier') {
-    if (!['standard', 'pro'].includes(values.tier)) throw new Error('Pass --tier standard or --tier pro');
+    if (!['essential', 'pro'].includes(values.tier)) throw new Error('Pass --tier essential or --tier pro');
     const f = await findFirm(values.firm || '');
     await pool.query('update firms set tier = $2 where id = $1', [f.id, values.tier]);
-    console.log(`${f.name}: plan ${values.tier === 'pro' ? 'Pro (PDFs and photos read by AI)' : 'Standard (bank files and e-invoices only)'}`);
+    console.log(`${f.name}: plan ${values.tier === 'pro' ? 'Pro (AI reading, bank feeds, email-in, exports)' : 'Essential'}`);
   } else if (cmd === 'list-firms') {
     const { rows } = await pool.query(`select f.*, (select count(*) from companies c where c.firm_id = f.id)::int as clients,
       (select count(*) from users u where u.firm_id = f.id)::int as accountants from firms f order by created_at`);

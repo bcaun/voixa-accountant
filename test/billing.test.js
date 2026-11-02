@@ -126,6 +126,6 @@ test('two plans: Pro is bought with its own price, and switching price in Stripe
   assert.deepEqual([me.firmInfo.plan, me.firmInfo.tier, me.firmInfo.aiReading], ['active', 'pro', true]);
   await stripeEvent({ type: 'customer.subscription.updated', data: { object: { id: 'sub_2', customer: 'cus_1', status: 'active', items: { data: [{ price: { id: 'price_123' } }] } } } });
   me = await ctx.acc('GET', '/me');
-  assert.deepEqual([me.firmInfo.tier, me.firmInfo.aiReading], ['standard', false]);
+  assert.deepEqual([me.firmInfo.tier, me.firmInfo.aiReading], ['essential', false]);
 });
 

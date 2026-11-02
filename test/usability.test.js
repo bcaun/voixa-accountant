@@ -52,7 +52,7 @@ const mail = (to, from, extra = {}) => ({
 const ctx = {};
 
 test('each workspace has a private address; attachments sent there by its people become documents', async () => {
-  const { rows: [f] } = await pool.query(`insert into firms (name, country) values ('Voixa', 'ES') returning id`);
+  const { rows: [f] } = await pool.query(`insert into firms (name, country, tier) values ('Voixa', 'ES', 'pro') returning id`);
   await pool.query(`insert into users (email, name, role, firm_id, notify_mode) values ('elena@voixa.es', 'Elena', 'accountant', $1, 'instant')`, [f.id]);
   ctx.acc = await as('elena@voixa.es');
   ctx.co = (await ctx.acc('POST', '/companies', { name: 'Sol y Mar SL', contactEmail: 'daniel@solymar.es' }, 201)).id;
@@ -116,7 +116,7 @@ test('search finds documents by title, file name, reference and client, only whe
   assert.equal(r2.results[0]?.ref, 'PX-001-0001');
   const r3 = await ctx.cl('GET', '/search?q=sol y mar');
   assert.ok(r3.results.length >= 1);
-  const { rows: [f2] } = await pool.query(`insert into firms (name, country) values ('Other', 'IT') returning id`);
+  const { rows: [f2] } = await pool.query(`insert into firms (name, country, tier) values ('Other', 'IT', 'pro') returning id`);
   await pool.query(`insert into users (email, name, role, firm_id) values ('x@other.it', 'X', 'accountant', $1)`, [f2.id]);
   const other = await as('x@other.it');
   assert.equal((await other('GET', '/search?q=0101')).results.length, 0);
