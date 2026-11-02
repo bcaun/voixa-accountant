@@ -190,31 +190,123 @@ const T = {
   },
 };
 
+const EXTRA = {
+ "en": {
+  "yes": "Included",
+  "no": "Not included",
+  "feature": "What you get",
+  "choose": "You choose the plan when the trial ends.",
+  "trialTitle": "How the free trial works",
+  "trial": [
+   "Sign up with your firm’s name and email; open the link we send and you are in.",
+   "For 30 days you have everything in Pro, without a card. During the trial a firm can have up to 10 clients and send up to 20 invitations a day.",
+   "Subscribe to Essential or Pro whenever you are ready. If you do not, everything is kept: you can still read and export it, and your clients can still send documents."
+  ],
+  "demoTitle": "Prefer to be shown?",
+  "demoText": "Book a 30-minute call: we go through Pescada with your own cases, help you bring in your first clients and set their deadlines. Useful for larger firms or if you are moving from another tool."
+ },
+ "es": {
+  "yes": "Incluido",
+  "no": "No incluido",
+  "feature": "Qué incluye",
+  "choose": "El plan lo eliges al terminar la prueba.",
+  "trialTitle": "Cómo funciona la prueba gratuita",
+  "trial": [
+   "Regístrate con el nombre de tu despacho y tu correo; abre el enlace que te enviamos y ya estás dentro.",
+   "Durante 30 días tienes todo lo de Pro, sin tarjeta. En la prueba un despacho puede tener hasta 10 clientes y enviar hasta 20 invitaciones al día.",
+   "Suscríbete a Essential o a Pro cuando quieras. Si no lo haces, todo se conserva: puedes seguir consultándolo y exportándolo, y tus clientes pueden seguir enviando documentos."
+  ],
+  "demoTitle": "¿Prefieres que te lo enseñemos?",
+  "demoText": "Reserva una llamada de 30 minutos: recorremos Pescada con tus propios casos, te ayudamos a dar de alta a tus primeros clientes y a configurar sus plazos. Útil para despachos grandes o si vienes de otra herramienta."
+ },
+ "it": {
+  "yes": "Incluso",
+  "no": "Non incluso",
+  "feature": "Cosa comprende",
+  "choose": "Il piano lo scegli alla fine della prova.",
+  "trialTitle": "Come funziona la prova gratuita",
+  "trial": [
+   "Registrati con il nome dello studio e la tua email; apri il link che ti inviamo e sei dentro.",
+   "Per 30 giorni hai tutto Pro, senza carta. Durante la prova uno studio può avere fino a 10 clienti e inviare fino a 20 inviti al giorno.",
+   "Abbonati a Essential o a Pro quando vuoi. Se non lo fai, tutto resta conservato: puoi ancora consultarlo ed esportarlo, e i tuoi clienti possono ancora inviare documenti."
+  ],
+  "demoTitle": "Preferisci che te lo mostriamo?",
+  "demoText": "Prenota una chiamata di 30 minuti: vediamo Pescada sui tuoi casi, ti aiutiamo a inserire i primi clienti e a impostare le loro scadenze. Utile per studi più grandi o se arrivi da un altro strumento."
+ },
+ "fr": {
+  "yes": "Inclus",
+  "no": "Non inclus",
+  "feature": "Ce qui est compris",
+  "choose": "Vous choisissez la formule à la fin de l’essai.",
+  "trialTitle": "Comment se passe l’essai gratuit",
+  "trial": [
+   "Inscrivez-vous avec le nom de votre cabinet et votre e-mail ; ouvrez le lien envoyé et vous y êtes.",
+   "Pendant 30 jours vous avez tout Pro, sans carte. Pendant l’essai, un cabinet peut avoir jusqu’à 10 clients et envoyer jusqu’à 20 invitations par jour.",
+   "Abonnez-vous à Essential ou à Pro quand vous êtes prêt. Sinon, tout est conservé : vous pouvez encore le consulter et l’exporter, et vos clients peuvent encore envoyer des documents."
+  ],
+  "demoTitle": "Vous préférez une présentation ?",
+  "demoText": "Réservez un appel de 30 minutes : nous parcourons Pescada avec vos propres cas, vous aidons à ajouter vos premiers clients et à régler leurs échéances. Utile pour les cabinets plus grands ou si vous venez d’un autre outil."
+ },
+ "de": {
+  "yes": "Enthalten",
+  "no": "Nicht enthalten",
+  "feature": "Was enthalten ist",
+  "choose": "Den Tarif wählen Sie am Ende der Testphase.",
+  "trialTitle": "So funktioniert der kostenlose Test",
+  "trial": [
+   "Registrieren Sie sich mit dem Namen Ihrer Kanzlei und Ihrer E-Mail; öffnen Sie den Link, den wir senden, und Sie sind drin.",
+   "30 Tage lang haben Sie alles aus Pro, ohne Karte. Während des Tests kann eine Kanzlei bis zu 10 Mandanten haben und bis zu 20 Einladungen pro Tag senden.",
+   "Abonnieren Sie Essential oder Pro, wann Sie möchten. Wenn nicht, bleibt alles erhalten: Sie können es weiter ansehen und exportieren, und Ihre Mandanten können weiter Dokumente senden."
+  ],
+  "demoTitle": "Lieber gezeigt bekommen?",
+  "demoText": "Buchen Sie ein 30-minütiges Gespräch: Wir gehen Pescada mit Ihren eigenen Fällen durch, helfen beim Anlegen der ersten Mandanten und ihrer Fristen. Sinnvoll für größere Kanzleien oder beim Umstieg von einem anderen Werkzeug."
+ },
+ "pt": {
+  "yes": "Incluído",
+  "no": "Não incluído",
+  "feature": "O que inclui",
+  "choose": "Escolhe o plano no fim do período experimental.",
+  "trialTitle": "Como funciona o período experimental",
+  "trial": [
+   "Registe-se com o nome do seu gabinete e o seu email; abra a ligação que lhe enviamos e já está dentro.",
+   "Durante 30 dias tem tudo do Pro, sem cartão. No período experimental, um gabinete pode ter até 10 clientes e enviar até 20 convites por dia.",
+   "Subscreva o Essential ou o Pro quando quiser. Se não o fizer, tudo fica guardado: pode continuar a consultar e exportar, e os seus clientes podem continuar a enviar documentos."
+  ],
+  "demoTitle": "Prefere que lho mostremos?",
+  "demoText": "Marque uma chamada de 30 minutos: percorremos o Pescada com os seus próprios casos, ajudamo-lo a registar os primeiros clientes e a configurar os prazos. Útil para gabinetes maiores ou se vem de outra ferramenta."
+ }
+};
+
 const money = (n, locale) => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', minimumFractionDigits: Number.isInteger(n) ? 0 : 2 }).format(n);
 
-function plan(t, id, featured) {
-  const [name, tag, items] = t[id], p = PLANS[id];
-  return `<article class="plan${featured ? ' featured' : ''}">
-    ${featured ? `<p class="plan-tag">${t.popular}</p>` : ''}
-    <h2>${name}</h2>
-    <p class="plan-price"><b>${money(p.base, t.locale)}</b> <span>${t.month}</span></p>
-    <p class="plan-sub">${t.included} · ${t.then(money(p.per, t.locale))}</p>
-    <p class="plan-desc">${tag}</p>
-    <ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>
-    <a class="btn ${featured ? 'primary' : 'outline'}" href="${SIGNUP}">${t.trial}</a>
-  </article>`;
+function compare(t, x) {
+  const rows = [...t.essential[2].map((f) => [f, true]), ...t.pro[2].slice(1).map((f) => [f, false])];
+  const mark = (on) => (on ? `<span class="mark yes" role="img" aria-label="${x.yes}">✓</span>` : `<span class="mark no" role="img" aria-label="${x.no}">–</span>`);
+  const head = (id) => { const p = PLANS[id]; return `<th scope="col" class="${id === 'pro' ? 'featured' : ''}">${id === 'pro' ? `<span class="plan-tag">${t.popular}</span>` : ''}
+      <span class="plan-name">${t[id][0]}</span><span class="plan-price"><b>${money(p.base, t.locale)}</b> ${t.month}</span>
+      <span class="plan-sub">${t.included}<br>${t.then(money(p.per, t.locale))}</span></th>`; };
+  return `<div class="compare"><table>
+    <thead><tr><th scope="col" class="feat">${x.feature}</th>${head('essential')}${head('pro')}</tr></thead>
+    <tbody>${rows.map(([f, both]) => `<tr><th scope="row">${f}</th><td>${mark(both)}</td><td class="featured">${mark(true)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><th scope="row" class="choose">${x.choose}</th>
+      <td><a class="btn outline small" href="${SIGNUP}">${t.trial}</a></td>
+      <td class="featured"><a class="btn primary small" href="${SIGNUP}">${t.trial}</a></td></tr></tfoot>
+  </table></div>`;
 }
 
-export const pages = Object.entries(T).map(([lang, t]) => ({
+export const pages = Object.entries(T).map(([lang, t]) => { const x = EXTRA[lang]; return {
   key: 'pricing', lang, path: t.path, title: t.title, description: t.description,
   body: `<section class="section pricing"><div class="wrap">
     <div class="section-head"><h1>${t.title}</h1><p class="lead">${t.lead}</p></div>
-    <div class="plans">${plan(t, 'essential', false)}${plan(t, 'pro', true)}</div>
+    ${compare(t, x)}
     <h2 class="examples-title">${t.examplesTitle}</h2>
     <div class="table"><table><thead><tr><th scope="col">${t.clients}</th><th scope="col">Essential</th><th scope="col">Pro</th></tr></thead><tbody>
       ${EXAMPLES.map((n) => `<tr><th scope="row">${n}</th><td>${money(cost(PLANS.essential, n), t.locale)}</td><td>${money(cost(PLANS.pro, n), t.locale)}</td></tr>`).join('')}
     </tbody></table></div>
-    <ul class="pricing-notes">${t.notes.map((n) => `<li>${n}</li>`).join('')}</ul>
-    <p class="cta"><a class="btn primary" href="${SIGNUP}">${t.trial}</a><a class="btn outline" href="${t.home}#demo">${t.demo}</a></p>
+    <ul class="pricing-notes">${t.notes.filter((_, i) => i !== 2).map((n) => `<li>${n}</li>`).join('')}</ul>
+    <div class="pricing-more">
+      <div><h2>${x.trialTitle}</h2><ol>${x.trial.map((n) => `<li>${n}</li>`).join('')}</ol><p><a class="btn primary" href="${SIGNUP}">${t.trial}</a></p></div>
+      <div><h2>${x.demoTitle}</h2><p>${x.demoText}</p><p><a class="btn outline" href="${t.home}#demo">${t.demo}</a></p></div>
+    </div>
   </div></section>`,
-}));
+}; });
