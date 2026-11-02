@@ -137,6 +137,10 @@ exports, the append-only guard and detection of a tampered log.
   qualified TSA on the EU trusted list, `TSA_INTERVAL_MIN` default 60) the heads of the logs that grew are sealed hourly. Tokens and
   manifests are kept, shown in the log and report, and included in the full export for checking with `openssl ts -verify`.
   CLI: `timestamp-now`, `verify-timestamps`.
+- **Electronic seal:** the tracking report is also issued as a PDF (`/api/companies/:id/report.pdf`, also in the full export).
+  With `SEAL_CSC_URL` (+ `SEAL_CSC_CLIENT_ID`, `SEAL_CSC_CLIENT_SECRET`, `SEAL_CSC_CREDENTIAL_ID`, optional `SEAL_CSC_PIN`/`SEAL_CSC_TOKEN_URL`)
+  it is sealed remotely through the CSC API v2, or locally with `SEAL_CERT_FILE`/`SEAL_KEY_FILE`/`SEAL_CHAIN_FILE`; PAdES
+  (ETSI.CAdES.detached) with a signature timestamp when `TSA_URL` is set. `SEAL_NAME`, `SEAL_QUALIFIED=yes` only for a QSealC.
 - **Closing clients:** `CLOSE_EXPORT_DAYS` (30) export window, then blocked; purged after `RETENTION_YEARS` (6).
 - **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,
   `list-firms`). Clients are invited from the app. A firm can change its name and default country in the app.

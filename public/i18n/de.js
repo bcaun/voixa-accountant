@@ -814,4 +814,6 @@ export default {
   "Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.": "Drücken Sie Cmd+K (Strg+K unter Windows), um zu einem beliebigen Mandanten oder Dokument zu springen.",
   "Entries up to #{n} are sealed by a qualified timestamp ({tsa}, {time}).": "Einträge bis Nr. {n} sind mit einem qualifizierten Zeitstempel versiegelt ({tsa}, {time}).",
   "Entries up to #{n} are sealed by a trusted timestamp ({tsa}, {time}).": "Einträge bis Nr. {n} sind mit einem vertrauenswürdigen Zeitstempel versiegelt ({tsa}, {time}).",
+  "Sealed PDF": "Versiegeltes PDF",
+  "PDF": "PDF",
 };

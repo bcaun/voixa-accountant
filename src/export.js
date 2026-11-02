@@ -31,9 +31,8 @@ export async function exportCsv(company) {
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export async function exportReport(company, { itemId, by }) {
-  const tz = tzOf(company.country);
-  const fmtTime = (d) => fmtTimeTz(d, tz), fmtDay = (d) => fmtDayTz(d, tz);
+/** Everything a tracking report shows: items with their steps and files, the log, its check and timestamp. */
+export async function collectReport(company, { itemId }) {
   const verification = await verifyCompany({ query }, company.id);
   const stamp = await latestFor(company.id);
   const { rows: its } = await query(`select * from items where company_id = $1 ${itemId ? 'and id = $2' : ''} order by seq`, itemId ? [company.id, itemId] : [company.id]);
@@ -41,6 +40,18 @@ export async function exportReport(company, { itemId, by }) {
   const { rows: evs } = await query(
     `select * from events where company_id = $1 ${itemId ? 'and item_id = $2' : ''} order by seq`, itemId ? [company.id, itemId] : [company.id]);
   const { rows: vers } = await query('select * from versions where item_id = any($1) order by version', [ids]);
+  const evByItem = {};
+  for (const e of evs) if (e.item_id) (evByItem[e.item_id] ||= []).push(e);
+  const items = its.map((i) => ({ ...i, ref: refOf(company, i), status: computeStatus(i.kind, evByItem[i.id] || []), versions: vers.filter((v) => v.item_id === i.id) }));
+  const title = itemId && its[0] ? `Tracking report ${refOf(company, its[0])}` : `Tracking report: ${company.name}`;
+  return { verification, stamp, items, events: evs, title, tz: tzOf(company.country) };
+}
+
+export async function exportReport(company, { itemId, by }) {
+  const tz = tzOf(company.country);
+  const fmtTime = (d) => fmtTimeTz(d, tz), fmtDay = (d) => fmtDayTz(d, tz);
+  const { verification, stamp, items: rep, events: evs } = await collectReport(company, { itemId });
+  const its = rep, vers = rep.flatMap((i) => i.versions);
   const evByItem = {};
   for (const e of evs) if (e.item_id) (evByItem[e.item_id] ||= []).push(e);
   const kindLabel = { doc: 'Document from client', report: 'Report from accountant', request: 'Request to client' };

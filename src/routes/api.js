@@ -5,6 +5,8 @@ import * as passkeys from '../passkeys.js';
 import * as oauth from '../oauth.js';
 import * as calendar from '../calendar.js';
 import { latestFor } from '../timestamps.js';
+import { reportPdf } from '../reportpdf.js';
+import { sealOn } from '../seal.js';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
 import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout, createSession, setSessionCookie } from '../auth.js';
@@ -144,7 +146,7 @@ api.get('/me', async (req, res) => {
   const lang = u.lang || langOfCountry(firm?.country || rows[0]?.country);
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, lang, langChosen: u.lang || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
-    firmInfo: firm, countries: publicCountries(), companies: rows, features: { bankFeeds: feedsOn() } });
+    firmInfo: firm, countries: publicCountries(), companies: rows, features: { bankFeeds: feedsOn(), seal: sealOn() } });
 });
 
 /* ---------- my settings ---------- */
@@ -953,6 +955,16 @@ api.post('/items/:id/comments', json, simple(items.comment));
 api.post('/items/:id/remind', json, simple(items.remind));
 
 /* ---------- log ---------- */
+
+// The tracking report as a PDF, sealed when a seal is configured
+api.get('/companies/:id/report.pdf', async (req, res) => {
+  const company = await companyFor(req.user, req.params.id);
+  const itemId = isUuid(req.query.item) ? req.query.item : undefined;
+  if (itemId) await itemFor(req.user, itemId);
+  const pdf = await reportPdf(company, { itemId, by: req.user });
+  res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="pescada-${String(company.no).padStart(3, '0')}${itemId ? '-item' : ''}-tracking-report.pdf"`, 'Cache-Control': 'private, no-store' });
+  res.send(pdf);
+});
 
 api.get('/companies/:id/verify', async (req, res) => {
   const company = await companyFor(req.user, req.params.id);

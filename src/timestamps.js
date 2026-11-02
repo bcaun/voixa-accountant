@@ -14,11 +14,11 @@ import { pool, query } from './db.js';
 
 /* ---------- a little DER (just what RFC 3161 needs) ---------- */
 
-const len = (n) => (n < 128 ? Buffer.from([n]) : (() => { const b = []; while (n > 0) { b.unshift(n & 0xff); n >>= 8; } return Buffer.from([0x80 | b.length, ...b]); })());
-const tlv = (tag, body) => Buffer.concat([Buffer.from([tag]), len(body.length), body]);
-const seq = (...parts) => tlv(0x30, Buffer.concat(parts));
-const int = (buf) => { let b = Buffer.from(buf); if (b[0] & 0x80) b = Buffer.concat([Buffer.from([0]), b]); return tlv(0x02, b); };
-const oid = (s) => {
+export const len = (n) => (n < 128 ? Buffer.from([n]) : (() => { const b = []; while (n > 0) { b.unshift(n & 0xff); n >>= 8; } return Buffer.from([0x80 | b.length, ...b]); })());
+export const tlv = (tag, body) => Buffer.concat([Buffer.from([tag]), len(body.length), body]);
+export const seq = (...parts) => tlv(0x30, Buffer.concat(parts));
+export const int = (buf) => { let b = Buffer.from(buf); if (b[0] & 0x80) b = Buffer.concat([Buffer.from([0]), b]); return tlv(0x02, b); };
+export const oid = (s) => {
   const p = s.split('.').map(Number), out = [40 * p[0] + p[1]];
   for (const n of p.slice(2)) { const b = [n & 0x7f]; let v = n >> 7; while (v) { b.unshift(0x80 | (v & 0x7f)); v >>= 7; } out.push(...b); }
   return tlv(0x06, Buffer.from(out));
@@ -26,7 +26,7 @@ const oid = (s) => {
 const SHA256 = '2.16.840.1.101.3.4.2.1';
 
 /** Parse one DER element: { tag, start, header, end, body, children? } with offsets into buf. */
-function parse(buf, start = 0) {
+export function parse(buf, start = 0) {
   const tag = buf[start];
   let p = start + 1, n = buf[p++];
   if (n & 0x80) { const k = n & 0x7f; n = 0; for (let i = 0; i < k; i++) n = n * 256 + buf[p++]; }
@@ -34,7 +34,7 @@ function parse(buf, start = 0) {
   if (tag & 0x20) { el.children = []; for (let q = p; q < p + n;) { const c = parse(buf, q); el.children.push(c); q = c.end; } }
   return el;
 }
-const oidStr = (body) => {
+export const oidStr = (body) => {
   const out = [Math.floor(body[0] / 40), body[0] % 40]; let v = 0;
   for (const b of body.subarray(1)) { v = v * 128 + (b & 0x7f); if (!(b & 0x80)) { out.push(v); v = 0; } }
   return out.join('.');

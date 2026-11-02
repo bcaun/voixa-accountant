@@ -814,4 +814,6 @@ export default {
   "Press Cmd+K (Ctrl+K on Windows) to jump to any client or document.": "Premi Cmd+K (Ctrl+K su Windows) per andare a qualsiasi cliente o documento.",
   "Entries up to #{n} are sealed by a qualified timestamp ({tsa}, {time}).": "Le voci fino alla n. {n} sono sigillate con una marca temporale qualificata ({tsa}, {time}).",
   "Entries up to #{n} are sealed by a trusted timestamp ({tsa}, {time}).": "Le voci fino alla n. {n} sono sigillate con una marca temporale affidabile ({tsa}, {time}).",
+  "Sealed PDF": "PDF sigillato",
+  "PDF": "PDF",
 };

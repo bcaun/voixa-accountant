@@ -85,6 +85,15 @@ export const config = {
     intervalMin: num(env.TSA_INTERVAL_MIN, 60),
   },
 
+  // electronic seal on issued PDFs: remotely through a trust service provider (CSC API v2), or from files
+  seal: {
+    name: env.SEAL_NAME || '',                          // e.g. "Voixa Consultors S.L."
+    qualified: env.SEAL_QUALIFIED === 'yes',            // only for a qualified seal certificate (QSealC)
+    certFile: env.SEAL_CERT_FILE || '', keyFile: env.SEAL_KEY_FILE || '', chainFile: env.SEAL_CHAIN_FILE || '',
+    cscUrl: env.SEAL_CSC_URL || '', cscTokenUrl: env.SEAL_CSC_TOKEN_URL || '', cscClientId: env.SEAL_CSC_CLIENT_ID || '',
+    cscClientSecret: env.SEAL_CSC_CLIENT_SECRET || '', cscCredentialId: env.SEAL_CSC_CREDENTIAL_ID || '', cscPin: env.SEAL_CSC_PIN || '',
+  },
+
   // sign in with Google / Microsoft (OpenID Connect); each is off until its client ID and secret are set
   oauth: {
     google: { clientId: env.GOOGLE_CLIENT_ID || '', clientSecret: env.GOOGLE_CLIENT_SECRET || '',
