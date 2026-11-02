@@ -118,6 +118,7 @@ p { margin: 0; }
 
 /* key visual "Horizonte": sky, sun, sea, lagoon, deep */
 .horizon { position: relative; height: 520px; border-radius: 32px; overflow: hidden; isolation: isolate;
+  clip-path: inset(0 round 32px); -webkit-mask-image: -webkit-radial-gradient(white, black); /* Safari lets blurred children escape rounded corners */
   background: radial-gradient(120% 90% at 85% 0%, #123B57 0%, transparent 60%), linear-gradient(160deg, #0E3450 0%, var(--abismo) 55%, #061B29 100%); }
 .horizon .glow { position: absolute; border-radius: 50%; filter: blur(48px); z-index: -1; }
 .horizon .g1 { width: 380px; height: 380px; right: -110px; top: -90px; background: radial-gradient(circle, var(--atlantico) 0%, rgba(26, 93, 180, .25) 60%, transparent 72%); }
