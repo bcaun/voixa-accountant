@@ -7,7 +7,8 @@ import { appendEvent, lockCompany } from '../ledger.js';
 import { storage } from '../storage.js';
 import { SYSTEM } from '../items.js';
 import { COMPANY_SQL } from '../auth.js';
-import { AiError, aiAvailable, readWithAi } from './ai.js';
+import { AiError, aiAvailable as serverHasAi, readWithAi } from './ai.js';
+import { aiReadingAllowed } from '../billing.js';
 import { costOf } from './pricing.js';
 import { looksLikeNorma43, parseNorma43 } from './norma43.js';
 import { looksLikeCamt053, parseCamt053 } from './camt053.js';
@@ -93,6 +94,12 @@ const maskIban = (iban) => (iban ? `${iban.slice(0, 4)} …${iban.slice(-4)}` : 
 
 class Unsupported extends Error {}
 
+const PRO_ONLY = 'Reading PDFs and photos with AI is part of the Pro plan. Bank files (camt.053, MT940, CFONB 120, Norma 43, CSV) and e-invoices (FatturaPA, XRechnung, Factur-X, UBL) are read on every plan: ask for the statement or invoice in one of those formats, or move to Pro.';
+// the AI reader is used only when the server has it and the firm's plan includes it
+let currentJob = null;
+const aiAvailable = () => serverHasAi() && currentJob?.aiAllowed !== false;
+const notOnPlan = () => serverHasAi() && currentJob?.aiAllowed === false;
+
 async function readStatement(job, type, buf, name) {
   if (type === 'text') {
     const text = decodeText(buf);
@@ -106,6 +113,7 @@ async function readStatement(job, type, buf, name) {
         if (!aiAvailable()) throw new Unsupported(`The CSV columns were not recognised (${err.message}).`);
       }
     }
+    if (notOnPlan()) throw new Unsupported(PRO_ONLY);
     if (!aiAvailable()) throw new Unsupported('This text file is not Norma 43, CFONB 120, MT940, camt.053 or a bank CSV, and reading other formats needs the AI reader, which is not configured.');
     return ai(job, 'statement', { type: 'text', data: text.slice(0, 400000), name });
   }
@@ -121,6 +129,7 @@ async function readInvoice(job, type, buf, name) {
     }
   }
   if (type === 'text') {
+    if (notOnPlan()) throw new Unsupported(PRO_ONLY);
     if (!aiAvailable()) throw new Unsupported('This text file is not an e-invoice (FatturaPA, UBL or CII XML), and reading other invoices needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).');
     return ai(job, 'invoice', { type: 'text', data: decodeText(buf).slice(0, 400000), name });
   }
@@ -130,6 +139,7 @@ async function readInvoice(job, type, buf, name) {
 async function readBinaryWithAi(job, kind, type, buf, name) {
   if (type === 'excel') throw new Unsupported('Excel files are not read yet. Export the statement as CSV, camt.053, the bank’s national format (Norma 43, CFONB 120, MT940) or PDF and upload that.');
   if (!['pdf', 'png', 'jpeg', 'gif', 'webp'].includes(type)) throw new Unsupported('This file type cannot be read. Upload a PDF, a photo, an e-invoice XML, or a bank file (CSV, camt.053, Norma 43, CFONB 120, MT940).');
+  if (notOnPlan()) throw new Unsupported(PRO_ONLY);
   if (!aiAvailable()) throw new Unsupported('Reading PDFs and images needs the AI reader, which is not configured on this server (ANTHROPIC_API_KEY).');
   if (buf.length > config.recognition.maxAiFileMb * 1048576) throw new Unsupported(`The file is larger than ${config.recognition.maxAiFileMb} MB, the limit for automatic reading.`);
   return ai(job, kind, { type, data: buf, name });
@@ -204,9 +214,12 @@ async function recognise(job) {
   if (!ctx) return;
   const { item, version, company } = ctx;
   job.country = company.country;
+  const { rows: [firm] } = await pool.query('select plan, tier from firms where id = $1', [company.firm_id]);
+  job.aiAllowed = aiReadingAllowed(firm);
   const buf = await readAll(await storage.get(version.storage_key));
   const type = sniff(buf, version.file_name);
   let result;
+  currentJob = job;
   try {
     result = job.as_kind === 'statement'
       ? await readStatement(job, type, buf, version.file_name)

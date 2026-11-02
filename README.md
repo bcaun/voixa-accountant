@@ -122,7 +122,7 @@ exports, the append-only guard and detection of a tampered log.
 - **Email-in:** `INBOUND_DOMAIN` plus a Postmark inbound stream posting to
   `/webhooks/postmark-inbound?token=<WEBHOOK_TOKEN>`; mail must pass SPF or DKIM.
 - **Billing:** `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` (webhook `/webhooks/stripe`),
-  `STRIPE_QUANTITY=clients|firm`; `SIGNUP=off` disables self-signup, `TRIAL_DAYS` sets the trial.
+  `STRIPE_QUANTITY=clients|firm`; `STRIPE_PRICE_ID_PRO` for the Pro plan (Standard reads bank files and e-invoices exactly, Pro also reads PDFs and photos with AI; trials include everything; `node src/cli.js set-tier --firm … --tier pro` sets it by hand); `SIGNUP=off` disables self-signup, `TRIAL_DAYS` sets the trial.
   Sign-up creates nothing until the emailed link is opened; a hidden field, a minimum fill time, a list of
   throwaway mail domains and per-IP/per-address limits stop robots. `SIGNUP_DAILY_MAX` (20) caps requests per day,
   `TRIAL_MAX_CLIENTS` (10) and `TRIAL_MAX_INVITES` (20 a day) limit trial firms, and `SIGNUP_NOTIFY_EMAIL` is told of each new firm.

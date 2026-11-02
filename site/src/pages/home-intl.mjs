@@ -142,7 +142,7 @@ const pt = {
   features: [
     ['Um gabinete, todos os clientes', 'Um espaço para cada cliente', 'Cada empresa tem o seu espaço e convida os seus colaboradores. Os clientes nunca se veem entre si; a sua equipa vê todos, ou só os atribuídos.'],
     ['IVA · DMR · Modelo 22 · IES', 'Prazos que se abrem sozinhos', 'Extratos todos os meses, declaração periódica de IVA a dia 20 do segundo mês, DMR, Modelo 22 e IES: os pedidos aparecem com antecedência, com lembretes.'],
-    ['camt.053 · CSV · UBL · PDF', 'Extratos e faturas lidos por si', 'Os ficheiros bancários e as faturas eletrónicas leem-se de forma exata; os PDF e as digitalizações são lidos por IA. NIF, valores e números de fatura saem de cada movimento.'],
+    ['camt.053 · CSV · UBL · PDF', 'Extratos e faturas lidos por si', 'Os ficheiros bancários e as faturas eletrónicas leem-se de forma exata; no plano Pro, os PDF e as digitalizações também são lidos por IA. NIF, valores e números de fatura saem de cada movimento.'],
     ['Proposto, depois confirmado', 'Pagamentos associados às faturas', 'Cada movimento é associado às faturas carregadas pelo cliente por número, valor, NIF e data. Confirma ou rejeita.'],
     ['SHA-256 · CSV · relatório', 'Um registo que serve de prova', 'Cada ação fica num registo encadeado onde só se podem acrescentar entradas. Exporta-se em CSV ou como relatório de um documento.'],
     ['Também por e-mail', 'Os clientes também enviam por e-mail', 'Cada espaço tem um endereço privado: os anexos enviados pelos colaboradores do cliente tornam-se documentos, com o mesmo acompanhamento.'],

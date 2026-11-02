@@ -111,7 +111,7 @@ export const en = {
   features: [
     ['One firm, every client', 'A workspace for each client', 'Each company has its own space and can invite its own staff. Clients never see each other; your team sees them all.'],
     ['Monthly · quarterly · yearly', 'Deadlines that open themselves', 'Templates for each country, from Modelo 303 to F24, CA3, UStVA and the Portuguese VAT return: requests appear ahead of time, with reminders.'],
-    ['FatturaPA · XRechnung · Factur-X · bank files', 'Statements and e-invoices read for you', 'E-invoices and bank files are read exactly, or fetched from the bank through open banking; PDFs and scans are read by AI. Counterparty, tax ID, amount and invoice numbers come out of every payment.'],
+    ['FatturaPA · XRechnung · Factur-X · bank files', 'Statements and e-invoices read for you', 'E-invoices and bank files are read exactly, or fetched from the bank through open banking; on the Pro plan, PDFs and scans are read by AI too. Counterparty, tax ID, amount and invoice numbers come out of every payment.'],
     ['Suggested, then confirmed', 'Payments matched to invoices', 'Each payment is matched to the invoices the client uploaded, by number, amount, NIF and date. Your team confirms or rejects every match.'],
     ['SHA-256 · CSV · printable report', 'An evidence log you can hand over', 'Every action sits in an append-only, hash-chained log. Export it as CSV, or print a tracking report for one document.'],
     ['Full history', 'Versions, never overwrites', 'Replacing a file keeps the earlier version and the reason, and asks the other side to open and confirm again.'],
@@ -169,7 +169,7 @@ export const es = {
   features: [
     ['Una asesoría, todos sus clientes', 'Un espacio para cada cliente', 'Cada empresa tiene su propio espacio y puede invitar a su personal. Los clientes nunca se ven entre sí; tu equipo los ve a todos.'],
     ['Mensual · trimestral · anual', 'Plazos que se abren solos', 'Plantillas para cada país, del Modelo 303 al F24, la CA3, la UStVA o el IVA portugués: las solicitudes aparecen con antelación, con recordatorios.'],
-    ['FatturaPA · XRechnung · Factur-X · ficheros bancarios', 'Extractos y facturas electrónicas leídos por ti', 'Las facturas electrónicas y los ficheros bancarios se leen de forma exacta, o se reciben del banco por banca abierta; los PDF y escaneos los lee la IA. De cada movimiento salen contraparte, NIF, importe y número de factura.'],
+    ['FatturaPA · XRechnung · Factur-X · ficheros bancarios', 'Extractos y facturas electrónicas leídos por ti', 'Las facturas electrónicas y los ficheros bancarios se leen de forma exacta, o se reciben del banco por banca abierta; con el plan Pro, la IA lee también los PDF y escaneos. De cada movimiento salen contraparte, NIF, importe y número de factura.'],
     ['Propuesto y luego confirmado', 'Cobros y pagos casados con facturas', 'Cada movimiento se casa con las facturas que subió el cliente por número, importe, NIF y fecha. Tu equipo confirma o rechaza cada propuesta.'],
     ['SHA-256 · CSV · informe imprimible', 'Un registro que sirve como prueba', 'Cada acción queda en un registro encadenado al que solo se pueden añadir entradas. Se exporta en CSV o como informe de un documento.'],
     ['Historial completo', 'Versiones, nunca sobrescrituras', 'Al sustituir un archivo se conserva la versión anterior y el motivo, y se pide a la otra parte que vuelva a abrirlo y confirmarlo.'],

@@ -654,4 +654,12 @@ export default {
   '{step}: {time}': '{step}: {time}',
   '{time} ago': 'hace {time}',
   '{unopened} not opened, {overdue} overdue': '{unopened} sin abrir, {overdue} vencidas',
+  "Pro": "Pro",
+  "Standard": "Estándar",
+  "Plan: {tier}": "Plan: {tier}",
+  "Standard reads bank files (camt.053, MT940, CFONB 120, Norma 43, CSV) and e-invoices exactly. Pro also reads PDFs and photos of statements and invoices with AI.": "Estándar lee de forma exacta los ficheros bancarios (camt.053, MT940, CFONB 120, Norma 43, CSV) y las facturas electrónicas. Pro además lee con IA los PDF y las fotos de extractos y facturas.",
+  "During the trial everything is included.": "Durante la prueba está todo incluido.",
+  "Subscribe to Standard": "Suscribirse a Estándar",
+  "Subscribe to Pro": "Suscribirse a Pro",
+  "To switch between Standard and Pro, open “Card, invoices and cancellation”.": "Para cambiar entre Estándar y Pro, abre «Tarjeta, facturas y cancelación».",
 };

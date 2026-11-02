@@ -2,6 +2,7 @@
 // npm run create-accountant -- --email elena@voixa.es --name "Elena Ruiz" [--firm "Voixa Accounting"]
 // npm run login-link -- --email elena@voixa.es      (prints a one-time sign-in link)
 // node src/cli.js list-firms
+// node src/cli.js set-tier --firm "Studio Rossi" --tier pro      (standard | pro: Pro adds AI reading of PDFs and photos)
 import { parseArgs } from 'node:util';
 import { pool } from './db.js';
 import { migrate } from './migrate.js';
@@ -11,7 +12,7 @@ import { COUNTRY_CODES, isCountry } from './countries.js';
 
 const [cmd] = process.argv.slice(2);
 const { values } = parseArgs({ args: process.argv.slice(3), options: {
-  email: { type: 'string' }, name: { type: 'string' }, firm: { type: 'string' }, country: { type: 'string' },
+  email: { type: 'string' }, name: { type: 'string' }, firm: { type: 'string' }, country: { type: 'string' }, tier: { type: 'string' },
 } });
 const email = (values.email || '').trim().toLowerCase();
 const country = (values.country || '').trim().toUpperCase();
@@ -26,7 +27,9 @@ async function findFirm(ref) {
 async function createFirm(name, cc) {
   if (!name) throw new Error('Pass --name');
   if (!isCountry(cc)) throw new Error(`Pass --country, one of: ${COUNTRY_CODES.join(', ')}`);
-  const { rows: [f] } = await pool.query('insert into firms (name, country) values ($1, $2) returning *', [name, cc]);
+  const tier = values.tier || 'standard';
+  if (!['standard', 'pro'].includes(tier)) throw new Error('Pass --tier standard or --tier pro');
+  const { rows: [f] } = await pool.query('insert into firms (name, country, tier) values ($1, $2, $3) returning *', [name, cc, tier]);
   return f;
 }
 
@@ -34,7 +37,7 @@ try {
   await migrate();
   if (cmd === 'create-firm') {
     const f = await createFirm((values.name || '').trim(), country);
-    console.log(`Firm created: ${f.name} (${f.country}), id ${f.id}`);
+    console.log(`Firm created: ${f.name} (${f.country}), plan ${f.tier}, id ${f.id}`);
     console.log(`Add an accountant: npm run create-accountant -- --firm "${f.name}" --email someone@example.com --name "Their Name"`);
   } else if (cmd === 'verify-all') {
     // check every client's log: used after restoring a backup (deploy/restore-test.sh)
@@ -49,10 +52,15 @@ try {
     const counts = (await pool.query(`select (select count(*) from firms) as firms, (select count(*) from items) as items, (select count(*) from versions) as files`)).rows[0];
     console.log(`${rows.length} clients, ${entries} log entries, ${counts.items} items, ${counts.files} file versions, ${counts.firms} firms: ${bad ? `${bad} BROKEN` : 'every log verifies'}`);
     if (bad) process.exitCode = 2;
+  } else if (cmd === 'set-tier') {
+    if (!['standard', 'pro'].includes(values.tier)) throw new Error('Pass --tier standard or --tier pro');
+    const f = await findFirm(values.firm || '');
+    await pool.query('update firms set tier = $2 where id = $1', [f.id, values.tier]);
+    console.log(`${f.name}: plan ${values.tier === 'pro' ? 'Pro (PDFs and photos read by AI)' : 'Standard (bank files and e-invoices only)'}`);
   } else if (cmd === 'list-firms') {
     const { rows } = await pool.query(`select f.*, (select count(*) from companies c where c.firm_id = f.id)::int as clients,
       (select count(*) from users u where u.firm_id = f.id)::int as accountants from firms f order by created_at`);
-    for (const f of rows) console.log(`${f.id}  ${f.country}  ${f.name}  (${f.accountants} accountants, ${f.clients} clients)`);
+    for (const f of rows) console.log(`${f.id}  ${f.country}  ${f.tier.padEnd(8)}  ${f.name}  (${f.accountants} accountants, ${f.clients} clients)`);
     if (!rows.length) console.log('No firms yet.');
   } else {
     if (!email) throw new Error('Pass --email');
@@ -77,7 +85,7 @@ try {
       if (!u) throw new Error(`No user ${email}`);
       console.log(await createLoginLink(u.id));
     } else {
-      throw new Error('Commands: create-firm, list-firms, create-accountant, login-link, verify-all');
+      throw new Error('Commands: create-firm, list-firms, set-tier, create-accountant, login-link, verify-all');
     }
   }
 } catch (err) {

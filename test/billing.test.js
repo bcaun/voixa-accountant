@@ -24,7 +24,7 @@ const dir = await mkdtemp(path.join(tmpdir(), 'pescada-bill-'));
 Object.assign(process.env, {
   DATABASE_URL: process.env.TEST_DATABASE_URL || 'postgres://postgres@127.0.0.1:5432/voixa_test',
   MAIL_TRANSPORT: 'memory', EMAIL_LANG: 'en', STORAGE_DRIVER: 'fs', STORAGE_DIR: dir, SCHEDULER: 'off', APP_URL: 'http://localhost',
-  STRIPE_SECRET_KEY: 'sk_test_123', STRIPE_PRICE_ID: 'price_123', STRIPE_WEBHOOK_SECRET: 'whsec_test', STRIPE_API_BASE: `http://127.0.0.1:${fake.address().port}`,
+  STRIPE_SECRET_KEY: 'sk_test_123', STRIPE_PRICE_ID: 'price_123', STRIPE_PRICE_ID_PRO: 'price_pro', STRIPE_WEBHOOK_SECRET: 'whsec_test', STRIPE_API_BASE: `http://127.0.0.1:${fake.address().port}`,
 });
 const { pool } = await import('../src/db.js');
 const { migrate } = await import('../src/migrate.js');
@@ -111,3 +111,21 @@ test('signed Stripe events switch the firm on and off; unsigned ones are refused
   const log = (await ctx.acc('GET', '/firm/events')).events.map((e) => e.type);
   assert.ok(log.includes('signed_up') && log.includes('subscribed') && log.includes('subscription_canceled'));
 });
+
+test('two plans: Pro is bought with its own price, and switching price in Stripe switches the plan', async () => {
+  const b = await ctx.acc('GET', '/billing');
+  assert.equal(b.proOnline, true);
+  calls.length = 0;
+  await ctx.acc('POST', '/billing/checkout', { tier: 'pro' });
+  const call = calls.find((c) => c.url === '/v1/checkout/sessions');
+  assert.equal(call.body.get('line_items[0][price]'), 'price_pro');
+  assert.equal(call.body.get('metadata[tier]'), 'pro');
+  await ctx.acc('POST', '/billing/checkout', { tier: 'gold' }, 400);
+  await stripeEvent({ type: 'checkout.session.completed', data: { object: { client_reference_id: ctx.firm, customer: 'cus_1', subscription: 'sub_2', metadata: { tier: 'pro' } } } });
+  let me = await ctx.acc('GET', '/me');
+  assert.deepEqual([me.firmInfo.plan, me.firmInfo.tier, me.firmInfo.aiReading], ['active', 'pro', true]);
+  await stripeEvent({ type: 'customer.subscription.updated', data: { object: { id: 'sub_2', customer: 'cus_1', status: 'active', items: { data: [{ price: { id: 'price_123' } }] } } } });
+  me = await ctx.acc('GET', '/me');
+  assert.deepEqual([me.firmInfo.tier, me.firmInfo.aiReading], ['standard', false]);
+});
+

@@ -8,7 +8,7 @@ import { inboundAddress } from '../inbound.js';
 import { makeZip } from '../zip.js';
 import { closeCompany, reopenCompany, exportEverything } from '../closure.js';
 import { accountingExport, exportKinds } from '../exports.js';
-import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft } from '../billing.js';
+import { signUp, checkoutUrl, portalUrl, billingOn, firmActive, trialDaysLeft, aiReadingAllowed } from '../billing.js';
 import { feedsOn, institutions, connect as connectBank, removeConnection } from '../bankfeeds.js';
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
@@ -117,8 +117,8 @@ api.get('/me', async (req, res) => {
     : await query(`select c.id, c.no, c.name, c.nif, c.city, c.country, f.name as firm_name from companies c
                    join memberships m on m.company_id = c.id join firms f on f.id = c.firm_id
                    where m.user_id = $1 and m.removed_at is null and c.closed_at is null order by f.name, c.no`, [u.id]);
-  const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
-  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn() });
+  const firm = u.firm_id ? (await query('select id, name, country, require_mfa, plan, tier, trial_ends_at from firms where id = $1', [u.firm_id])).rows[0] : null;
+  if (firm) Object.assign(firm, { trialDaysLeft: trialDaysLeft(firm), active: firmActive(firm), onlinePayment: billingOn(), aiReading: aiReadingAllowed(firm) });
   const lang = u.lang || langOfCountry(firm?.country || rows[0]?.country);
   res.json({ user: { id: u.id, name: u.name, email: u.email, role: u.role, firmRole: u.firm_role || null, lang, langChosen: u.lang || null, notifyMode: items.notifyModeOf(u), digestHour: u.digest_hour,
     mfa: { enabled: !!u.totp_enabled_at, pending: !!req.session?.mfaPending, setupRequired: !!req.session?.mfaSetupRequired, recoveryLeft: (u.recovery_codes || []).length } }, firm: firm?.name || rows[0]?.firm_name || '',
@@ -294,10 +294,11 @@ api.patch('/firm/team/:id', json, async (req, res) => {
 
 api.get('/billing', async (req, res) => {
   requireAdmin(req.user);
-  const { rows: [f] } = await query('select plan, trial_ends_at, stripe_customer_id is not null as has_customer from firms where id = $1', [req.user.firm_id]);
-  res.json({ plan: f.plan, trialEndsAt: f.trial_ends_at, trialDaysLeft: trialDaysLeft(f), onlinePayment: billingOn(), hasCustomer: f.has_customer });
+  const { rows: [f] } = await query('select plan, tier, trial_ends_at, stripe_customer_id is not null as has_customer from firms where id = $1', [req.user.firm_id]);
+  res.json({ plan: f.plan, tier: f.tier, trialEndsAt: f.trial_ends_at, trialDaysLeft: trialDaysLeft(f), onlinePayment: billingOn(),
+    proOnline: billingOn() && !!config.stripe.priceIdPro, hasCustomer: f.has_customer, aiReading: aiReadingAllowed(f) });
 });
-api.post('/billing/checkout', async (req, res) => { requireAdmin(req.user); res.json({ url: await checkoutUrl(req.user) }); });
+api.post('/billing/checkout', json, async (req, res) => { requireAdmin(req.user); res.json({ url: await checkoutUrl(req.user, req.body?.tier || 'standard') }); });
 api.post('/billing/portal', async (req, res) => { requireAdmin(req.user); res.json({ url: await portalUrl(req.user) }); });
 
 /* ---------- my sessions ---------- */

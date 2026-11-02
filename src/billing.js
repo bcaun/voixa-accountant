@@ -15,6 +15,11 @@ import { alert } from './alerts.js';
 
 const DAY = 864e5;
 export const billingOn = () => !!(config.stripe.secretKey && config.stripe.priceId);
+export const TIERS = ['standard', 'pro'];
+
+/** PDFs and photos are read by AI on the Pro plan, and during the trial so firms can try it. */
+export const aiReadingAllowed = (f) => !f || f.tier === 'pro' || f.plan === 'trial';
+const tierOfPrice = (priceId) => (priceId && priceId === config.stripe.priceIdPro ? 'pro' : 'standard');
 
 /** Can this firm's accountants change things? Internal and paying firms always; trials until they end. */
 export function firmActive(f) {
@@ -148,16 +153,19 @@ async function quantityFor(firmId) {
 }
 
 /** A Stripe Checkout page for the firm's subscription. */
-export async function checkoutUrl(user) {
+export async function checkoutUrl(user, tier = 'standard') {
   if (!billingOn()) throw new HttpError(503, 'Online payment is not set up yet. Write to hello@pescada.io to subscribe.');
+  if (!TIERS.includes(tier)) throw new HttpError(400, 'Choose a plan.');
+  const price = tier === 'pro' ? config.stripe.priceIdPro : config.stripe.priceId;
+  if (!price) throw new HttpError(503, 'The Pro plan cannot be bought online yet. Write to hello@pescada.io.');
   const { rows: [f] } = await query('select * from firms where id = $1', [user.firm_id]);
   const s = await stripe('checkout/sessions', {
     mode: 'subscription', client_reference_id: f.id,
     ...(f.stripe_customer_id ? { customer: f.stripe_customer_id } : { customer_email: f.billing_email || user.email }),
-    'line_items[0][price]': config.stripe.priceId, 'line_items[0][quantity]': await quantityFor(f.id),
+    'line_items[0][price]': price, 'line_items[0][quantity]': await quantityFor(f.id),
     success_url: `${config.appUrl}/#/billing/done`, cancel_url: `${config.appUrl}/#/billing`,
     allow_promotion_codes: 'true', billing_address_collection: 'required', 'tax_id_collection[enabled]': 'true',
-    metadata: { firm_id: f.id },
+    metadata: { firm_id: f.id, tier }, 'subscription_data[metadata][tier]': tier,
   });
   return s.url;
 }
@@ -189,15 +197,20 @@ export async function handleStripeEvent(ev) {
     const firmId = o.client_reference_id || o.metadata?.firm_id;
     if (!firmId) return false;
     await tx(async (c) => {
-      await c.query(`update firms set plan = 'active', stripe_customer_id = $2, stripe_subscription_id = $3 where id = $1`, [firmId, o.customer, o.subscription]);
-      await firmEvent(c, firmId, null, 'subscribed', 'The firm subscribed to Pescada');
+      const tier = TIERS.includes(o.metadata?.tier) ? o.metadata.tier : 'standard';
+      await c.query(`update firms set plan = 'active', tier = $4, stripe_customer_id = $2, stripe_subscription_id = $3 where id = $1`, [firmId, o.customer, o.subscription, tier]);
+      await firmEvent(c, firmId, null, 'subscribed', `The firm subscribed to Pescada ${tier === 'pro' ? 'Pro' : 'Standard'}`);
     });
     return true;
   }
   if (ev.type.startsWith('customer.subscription.')) {
     const plan = ev.type === 'customer.subscription.deleted' ? 'canceled' : STATUS[o.status] || 'active';
-    const { rows: [f] } = await pool.query('update firms set plan = $2, stripe_subscription_id = $3 where stripe_customer_id = $1 returning id', [o.customer, plan, o.id]);
-    if (f) await firmEvent({ query }, f.id, null, 'subscription_' + plan, `Subscription status: ${plan}`);
+    // the plan follows the subscription's price, so switching in the Stripe portal switches the tier
+    const price = o.items?.data?.[0]?.price?.id;
+    const { rows: [f] } = await pool.query(
+      `update firms set plan = $2, stripe_subscription_id = $3, tier = coalesce($4, tier) where stripe_customer_id = $1 returning id, tier`,
+      [o.customer, plan, o.id, price ? tierOfPrice(price) : null]);
+    if (f) await firmEvent({ query }, f.id, null, 'subscription_' + plan, `Subscription status: ${plan}, plan ${f.tier === 'pro' ? 'Pro' : 'Standard'}`);
     return !!f;
   }
   if (ev.type === 'invoice.payment_failed') {

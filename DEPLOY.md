@@ -207,7 +207,14 @@ PT → португальский, остальные → английский. 
    STRIPE_PRICE_ID=price_...
    STRIPE_WEBHOOK_SECRET=whsec_...
    STRIPE_QUANTITY=clients     # или firm — одна подписка на фирму
+   STRIPE_PRICE_ID_PRO=price_...   # цена тарифа Pro (чтение PDF и фото через ИИ)
    ```
+   **Тарифы.** Standard точно читает банковские файлы (camt.053, MT940, CFONB 120, Norma 43, CSV) и
+   электронные счета. Pro дополнительно читает PDF и фото через ИИ. В пробный период включено всё.
+   Чтобы фирмы могли сами переходить между тарифами: Stripe → Settings → Billing → Customer portal →
+   Subscriptions → разрешить смену тарифа и добавить обе цены. Тариф в Pescada меняется по webhook.
+   Вручную: `docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js set-tier --firm "Название" --tier pro`
+   (фирмы, существовавшие до появления тарифов, получили Pro). Список с тарифами: `node src/cli.js list-firms`.
 Фирмы, созданные командой `create-firm`, работают без оплаты (план internal).
 Если подписка не оплачена, фирма видит всё, но не может создавать новое; клиенты не блокируются.
 

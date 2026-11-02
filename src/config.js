@@ -69,7 +69,8 @@ export const config = {
   stripe: {
     secretKey: env.STRIPE_SECRET_KEY || '',
     webhookSecret: env.STRIPE_WEBHOOK_SECRET || '',
-    priceId: env.STRIPE_PRICE_ID || '',
+    priceId: env.STRIPE_PRICE_ID || '',          // Standard plan
+    priceIdPro: env.STRIPE_PRICE_ID_PRO || '',   // Pro plan: adds AI reading of PDFs and photos
     // 'clients': one unit per open client workspace; 'firm': one unit per firm
     quantity: env.STRIPE_QUANTITY === 'firm' ? 'firm' : 'clients',
     apiBase: env.STRIPE_API_BASE || 'https://api.stripe.com',

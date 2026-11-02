@@ -313,9 +313,12 @@ async function billingModal() {
   let b;
   try { b = await api('/billing'); } catch (err) { return toast(err.message); }
   const label = { trial: b.trialDaysLeft != null ? tn(b.trialDaysLeft, 'Free trial, {n} day left', 'Free trial, {n} days left') : t('Free trial'), active: t('Subscribed'), past_due: t('Payment failed'), canceled: t('Cancelled'), internal: t('Included') }[b.plan];
-  openModal(`${modalHead(t('Subscription'))}<div class="modal-b"><p><b>${label}</b></p>
+  const tierName = b.tier === 'pro' ? t('Pro') : t('Standard');
+  openModal(`${modalHead(t('Subscription'))}<div class="modal-b"><p><b>${label}</b>${b.plan === 'trial' ? '' : ` · ${t('Plan: {tier}', { tier: tierName })}`}</p>
+    <p class="sub">${t('Standard reads bank files (camt.053, MT940, CFONB 120, Norma 43, CSV) and e-invoices exactly. Pro also reads PDFs and photos of statements and invoices with AI.')}${b.plan === 'trial' ? ` ${t('During the trial everything is included.')}` : ''}</p>
     ${b.onlinePayment ? `<p class="sub">${t('Payment is handled by Stripe. Pescada never sees your card.')}</p>
-      <div class="dr-actions">${b.plan !== 'active' ? `<button class="btn primary" data-act="checkout">${t('Subscribe')}</button>` : ''}${b.hasCustomer ? `<button class="btn" data-act="portal">${t('Card, invoices and cancellation')}</button>` : ''}</div>`
+      <div class="dr-actions">${b.plan !== 'active' ? `<button class="btn ${b.proOnline ? '' : 'primary'}" data-act="checkout" data-tier="standard">${t('Subscribe to Standard')}</button>${b.proOnline ? `<button class="btn primary" data-act="checkout" data-tier="pro">${t('Subscribe to Pro')}</button>` : ''}` : ''}${b.hasCustomer ? `<button class="btn" data-act="portal">${t('Card, invoices and cancellation')}</button>` : ''}</div>
+      ${b.plan === 'active' && b.proOnline ? `<p class="sub" style="margin-top:10px">${t('To switch between Standard and Pro, open “Card, invoices and cancellation”.')}</p>` : ''}`
     : `<p class="sub">${t('Online payment is not set up yet. Write to {email} to subscribe.', { email: '<a href="mailto:hello@pescada.io">hello@pescada.io</a>' })}</p>`}</div>`);
 }
 
@@ -1322,7 +1325,7 @@ document.addEventListener('click', async (e) => {
     case 'account': accountModal(); break;
     case 'signup': history.replaceState(null, '', '#/signup'); renderSignup(); break;
     case 'billing': billingModal(); break;
-    case 'checkout': case 'portal': try { const r = await api(`/billing/${b.dataset.act}`, { method: 'POST', body: {} }); location.href = r.url; } catch (err) { toast(err.message); } break;
+    case 'checkout': case 'portal': try { const r = await api(`/billing/${b.dataset.act}`, { method: 'POST', body: b.dataset.tier ? { tier: b.dataset.tier } : {} }); location.href = r.url; } catch (err) { toast(err.message); } break;
     case 'sel-toggle': { const f = filtState(b.dataset.key); f.selecting = !f.selecting; f.picked.clear(); renderData(); break; }
     case 'sel-all': { const k = b.dataset.key; applyFilter(k, S.lists[k].items).forEach((i) => filtState(k).picked.add(i.id)); redrawList(k); break; }
     case 'bulk-zip': {

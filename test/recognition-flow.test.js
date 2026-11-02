@@ -81,7 +81,7 @@ const rec = () => ctx.acc.get(`/companies/${ctx.co}/recognition`);
 const events = async () => (await ctx.acc.get(`/companies/${ctx.co}`)).events;
 
 test('setup: accountant, client company with its NIF, client contact', async () => {
-  const { rows: [acc] } = await pool.query(`with f as (insert into firms (name, country) values ('Voixa Accounting', 'ES') returning id)
+  const { rows: [acc] } = await pool.query(`with f as (insert into firms (name, country, tier) values ('Voixa Accounting', 'ES', 'pro') returning id)
     insert into users (email, name, role, firm_id, notify_mode) select 'elena@voixa.es', 'Elena Ruiz', 'accountant', f.id, 'instant' from f returning *`);
   ctx.accCookie = await signIn(await createLoginLink(acc.id));
   ctx.acc = as(ctx.accCookie);
@@ -215,3 +215,28 @@ test('the evidence log still verifies after recognition and matching', async () 
   const v = await ctx.acc.get(`/companies/${ctx.co}/verify`);
   assert.equal(v.ok, true);
 });
+
+test('on the Standard plan PDFs are not sent to AI, bank files still are read; the trial includes AI', async () => {
+  config.recognition.monthlyBudgetUsd = 0;
+  const { rows: [f] } = await pool.query(`update firms set tier = 'standard' returning id`);
+  const before = aiCalls.length;
+  let n = 0;
+  const calls = () => n;
+  setAiReader(async () => { n++; return { model: 'claude-opus-5-5', usage: { input_tokens: 10, output_tokens: 10 }, data: { is_invoice: true, invoice_number: `T-${n}`, total_amount: 10 } }; });
+  await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Invoice', 'standard.pdf', '%PDF-1.4 standard'), 201);
+  await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Bank statement', 'extracto-oct.n43', SAMPLE_N43, 'text/plain'), 201);
+  await processJobs(); await processJobs();
+  assert.equal(calls(), 0, 'no AI call on Standard');
+  const r = await rec();
+  assert.ok(r.extractions.some((e) => e.status === 'unsupported' && /part of the Pro plan/.test(e.error)));
+  assert.equal(r.extractions.filter((e) => e.method === 'norma43').length >= 2, true, 'Norma 43 is read on every plan');
+  assert.equal((await ctx.acc.get('/me')).firmInfo.aiReading, false);
+
+  await pool.query(`update firms set plan = 'trial', trial_ends_at = now() + interval '10 days' where id = $1`, [f.id]);
+  assert.equal((await ctx.acc.get('/me')).firmInfo.aiReading, true);
+  await ctx.daniel.post(`/companies/${ctx.co}/documents`, upload('Invoice', 'trial.pdf', '%PDF-1.4 trial'), 201);
+  await processJobs(); await processJobs();
+  assert.equal(calls(), 1, 'the trial includes AI reading');
+  assert.equal(aiCalls.length, before);
+});
+
