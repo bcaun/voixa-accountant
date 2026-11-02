@@ -19,6 +19,7 @@ export const config = {
   emailLang: env.EMAIL_LANG || 'auto',
   // the website's demo form posts here; requests are emailed to DEMO_EMAIL and the visitor goes back to SITE_URL
   demoEmail: env.DEMO_EMAIL || 'hello@pescada.io',
+  supportEmail: env.SUPPORT_EMAIL || env.DEMO_EMAIL || 'hello@pescada.io',
   siteUrl: (env.SITE_URL || 'https://pescada.io').replace(/\/$/, ''),
   loginLinkMinutes: num(env.LOGIN_LINK_MINUTES, 30),
   maxUploadMb: num(env.MAX_UPLOAD_MB, 25),
@@ -74,6 +75,14 @@ export const config = {
     // 'clients': one unit per open client workspace; 'firm': one unit per firm
     quantity: env.STRIPE_QUANTITY === 'firm' ? 'firm' : 'clients',
     apiBase: env.STRIPE_API_BASE || 'https://api.stripe.com',
+  },
+
+  // sign in with Google / Microsoft (OpenID Connect); each is off until its client ID and secret are set
+  oauth: {
+    google: { clientId: env.GOOGLE_CLIENT_ID || '', clientSecret: env.GOOGLE_CLIENT_SECRET || '',
+      authUrl: env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth', tokenUrl: env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token' },
+    microsoft: { clientId: env.MICROSOFT_CLIENT_ID || '', clientSecret: env.MICROSOFT_CLIENT_SECRET || '', tenant: env.MICROSOFT_TENANT || 'organizations',
+      authUrl: env.MICROSOFT_AUTH_URL || '', tokenUrl: env.MICROSOFT_TOKEN_URL || '' },
   },
 
   // bank statements through open banking (GoCardless Bank Account Data); off without keys

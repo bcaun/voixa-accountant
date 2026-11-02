@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import express from 'express';
+import { planImport, runImport } from '../import.js';
+import * as passkeys from '../passkeys.js';
+import * as oauth from '../oauth.js';
 import { config } from '../config.js';
 import { query, tx } from '../db.js';
-import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout } from '../auth.js';
+import { HttpError, companyFor, isUuid, requireUser, sendLoginLink, logout, createSession, setSessionCookie } from '../auth.js';
 import { firmEvent } from '../audit.js';
 import { scanStored } from '../antivirus.js';
 import { inboundAddress } from '../inbound.js';
@@ -14,7 +17,7 @@ import { feedsOn, institutions, connect as connectBank, removeConnection } from 
 import { actorOf } from '../auth.js';
 import { newSecret, otpauthUri, seal, unseal, verifyTotp, recoveryCodes, hashRecovery } from '../totp.js';
 import QRCode from 'qrcode';
-import { flushEmails } from '../mailer.js';
+import { flushEmails, sendDirect } from '../mailer.js';
 import { storage } from '../storage.js';
 import { parseUpload, discard } from '../multipart.js';
 import { verifyCompany, appendEvent, lockCompany } from '../ledger.js';
@@ -68,6 +71,21 @@ api.post('/signup', json, async (req, res) => {
   await signUp({ firmName: str(b.firmName, 200), country: b.country, name: str(b.name, 200), email: str(b.email, 200),
     website: str(b.website, 200), ms: Number(b.ms), ip: req.ip });
   flushEmails().catch((err) => console.error('mail', err));
+  res.json({ ok: true });
+});
+
+// Which sign-in methods this server offers (the sign-in page shows only these)
+api.get('/auth/providers', (req, res) => res.json({ ...oauth.enabledProviders(), passkeys: true }));
+
+// Sign in with a passkey (no session yet)
+api.post('/auth/passkey/options', async (req, res) => {
+  rateLimit(`passkey:${req.ip}`, 30);
+  res.json(await passkeys.authenticationOptions());
+});
+api.post('/auth/passkey', json, async (req, res) => {
+  rateLimit(`passkey:${req.ip}`, 30);
+  const u = await passkeys.authenticate({ challengeId: req.body?.challengeId, response: req.body?.response });
+  setSessionCookie(res, await createSession(u, { userAgent: req.get('user-agent'), ip: req.ip }, { strong: true }));
   res.json({ ok: true });
 });
 
@@ -347,6 +365,34 @@ api.patch('/firm', json, async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------- passkeys of the signed-in person ---------- */
+
+api.get('/passkeys', async (req, res) => res.json({ passkeys: await passkeys.listPasskeys(req.user) }));
+api.post('/passkeys/options', async (req, res) => res.json(await passkeys.registrationOptions(req.user)));
+api.post('/passkeys', json, async (req, res) => {
+  res.status(201).json(await passkeys.register(req.user, { challengeId: req.body?.challengeId, response: req.body?.response, name: str(req.body?.name, 60) }));
+});
+api.delete('/passkeys/:id', async (req, res) => { await passkeys.removePasskey(req.user, req.params.id); res.json({ ok: true }); });
+
+/* ---------- Google / Microsoft accounts linked to the signed-in person ---------- */
+
+api.get('/identities', async (req, res) => res.json({ identities: await oauth.listIdentities(req.user), providers: oauth.enabledProviders() }));
+api.delete('/identities/:provider', async (req, res) => { await oauth.unlink(req.user, req.params.provider); res.json({ ok: true }); });
+
+/* ---------- support ---------- */
+
+api.post('/support', json, async (req, res) => {
+  rateLimit(`support:${req.user.id}`, 5, 60 * 60e3, 'You have sent several messages in a short time. We will answer them first; write to hello@pescada.io if it is urgent.');
+  const message = str(req.body?.message, 5000);
+  if (!message) throw new HttpError(400, 'Write your message first.');
+  const { rows: [f] } = req.user.firm_id ? await query('select name, country, plan, tier from firms where id = $1', [req.user.firm_id]) : { rows: [] };
+  const lines = [message, '', '---', `From: ${req.user.name || ''} <${req.user.email}> (${req.user.role}${req.user.firm_role ? `, ${req.user.firm_role}` : ''})`,
+    f ? `Firm: ${f.name} (${f.country}), plan ${f.plan}/${f.tier}` : `Client companies: ${(await query('select c.name from memberships m join companies c on c.id = m.company_id where m.user_id = $1 and m.removed_at is null', [req.user.id])).rows.map((r) => r.name).join(', ') || '—'}`,
+    `Page: ${str(req.body?.page, 300)}`, `Browser: ${String(req.get('user-agent') || '').slice(0, 300)}`, `Time: ${new Date().toISOString()}`];
+  await sendDirect(config.supportEmail, `Support: ${req.user.name || req.user.email}${f ? ` · ${f.name}` : ''}`, lines.join('\n'), { replyTo: req.user.email });
+  res.json({ ok: true });
+});
+
 /* ---------- firm logo (Pro) ---------- */
 
 // PNG or JPEG only (no SVG, which can carry scripts), up to 300 KB
@@ -402,6 +448,19 @@ api.post('/companies', json, async (req, res) => {
   });
   flushEmails().catch((err) => console.error('mail', err));
   res.status(201).json({ id: co.id });
+});
+
+// Import clients from a CSV file: first a check (nothing written), then the import itself
+api.post('/companies/import', express.json({ limit: '2mb' }), async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can add clients.');
+  const text = String(req.body?.csv || '');
+  const plan = await tx((c) => planImport(c, req.user, text));
+  if (!req.body?.commit) return res.json(plan);
+  await runImport(tx, req.user, plan, { invite: req.body.invite !== false });
+  const created = plan.rows.filter((r) => r.status === 'created').length;
+  if (created) await firmEvent({ query }, req.user.firm_id, req.user, 'clients_imported', `${req.user.name || req.user.email} imported ${created} client${created === 1 ? '' : 's'} from a file`);
+  flushEmails().catch((err) => console.error('mail', err));
+  res.json(plan);
 });
 
 api.patch('/companies/:id', json, async (req, res) => {
@@ -618,6 +677,31 @@ api.post('/companies/:id/requests', json, async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
+// One request to many clients at once (for example "October invoices" to everyone)
+api.post('/requests/bulk', json, async (req, res) => {
+  if (req.user.role !== 'accountant') throw new HttpError(403, 'Only accountants can request documents.');
+  const b = req.body || {};
+  const title = str(b.title, 200), note = str(b.note, 1000);
+  if (!title) throw new HttpError(400, 'Describe the document you need.');
+  if (!parseDay(b.due)) throw new HttpError(400, 'Set a due date.');
+  const ids = Array.isArray(b.companyIds) ? b.companyIds.filter(isUuid).slice(0, 1000) : [];
+  if (!ids.length) throw new HttpError(400, 'Choose at least one client.');
+  let sent = 0;
+  const failed = [];
+  for (const id of ids) {
+    try {
+      await tx(async (c) => {
+        const company = await companyFor(req.user, id, c);
+        if (company.closed_at) throw new HttpError(409, 'This client is closed.');
+        await items.createRequest(c, { user: req.user, company, title, dueAt: parseDay(b.due, tzOf(company.country)), note });
+      });
+      sent++;
+    } catch (err) { failed.push({ id, error: err.message }); }
+  }
+  flushEmails().catch((err) => console.error('mail', err));
+  res.json({ sent, failed });
+});
+
 /* ---------- one item ---------- */
 
 async function itemFor(user, id, c) {
@@ -669,7 +753,10 @@ api.get('/items/:id/file', async (req, res) => {
     'Content-Type': inline ? version.mime : 'application/octet-stream',
     'Content-Length': String(version.size),
     'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(version.file_name)}`,
-    'Content-Security-Policy': 'sandbox',
+    // Files never run as pages. A PDF shown inside the app is the exception: browsers will not
+    // draw a PDF in a sandboxed frame. A PDF is not HTML (and nosniff stops it being read as HTML), so it is only kept from being framed by other sites.
+    'Content-Security-Policy': inline && version.mime === 'application/pdf' && req.query.preview === '1' ? "frame-ancestors 'self'" : 'sandbox',
+    'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'private, no-store',
   });
   stream.on('error', () => res.destroy());

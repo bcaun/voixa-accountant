@@ -59,7 +59,7 @@ async function deliver(m) {
   }
   if (t === 'smtp') {
     smtp ??= nodemailer.createTransport(config.mail.smtpUrl);
-    const info = await smtp.sendMail({ from: config.mail.from, to: m.to_email, subject: m.subject, html: m.html, text: m.body_text, headers: { 'X-Voixa-Email-Id': m.id } });
+    const info = await smtp.sendMail({ from: config.mail.from, to: m.to_email, replyTo: m.reply_to, subject: m.subject, html: m.html, text: m.body_text, headers: { 'X-Voixa-Email-Id': m.id } });
     return info.messageId;
   }
   if (t === 'postmark') {
@@ -67,7 +67,7 @@ async function deliver(m) {
       method: 'POST',
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Postmark-Server-Token': config.mail.postmarkToken },
       body: JSON.stringify({
-        From: config.mail.from, To: m.to_email, Subject: m.subject, HtmlBody: m.html, TextBody: m.body_text,
+        From: config.mail.from, To: m.to_email, ...(m.reply_to ? { ReplyTo: m.reply_to } : {}), Subject: m.subject, HtmlBody: m.html, TextBody: m.body_text,
         MessageStream: config.mail.postmarkStream,
         // operator emails are not in the database: no id for webhooks to look up, no open tracking
         ...(m.direct ? { TrackOpens: false } : { Metadata: { email_id: m.id }, TrackOpens: true }),
@@ -101,9 +101,9 @@ async function logEmailEvent(client, m, type, text, data = {}, { once = false } 
 }
 
 /** Send one email right away, without the queue or the log (operator alerts). */
-export async function sendDirect(to, subject, text) {
+export async function sendDirect(to, subject, text, { replyTo } = {}) {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  return deliver({ id: `direct-${Date.now()}`, direct: true, to_email: to, subject, body_text: text, html: `<pre style="font:12px/1.5 monospace;white-space:pre-wrap">${esc(text)}</pre>` });
+  return deliver({ id: `direct-${Date.now()}`, direct: true, reply_to: replyTo, to_email: to, subject, body_text: text, html: `<pre style="font:12px/1.5 monospace;white-space:pre-wrap">${esc(text)}</pre>` });
 }
 
 let flushing = null;

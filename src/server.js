@@ -6,7 +6,10 @@ import { migrate } from './migrate.js';
 import { HttpError, loadUser, redeemToken, requireAppHeader, setSessionCookie } from './auth.js';
 import { handlePostmarkWebhook } from './mailer.js';
 import { api } from './routes/api.js';
-import { authPage, PAGE_LANGS } from './pages.js';
+import { authPage, revokePage, oauthPage, PAGE_LANGS } from './pages.js';
+import * as oauth from './oauth.js';
+import { createSession } from './auth.js';
+import { revokeFromAlert } from './devices.js';
 import { handleInbound } from './inbound.js';
 import { verifyStripeSignature, handleStripeEvent } from './billing.js';
 import { finish as finishBank } from './bankfeeds.js';
@@ -116,6 +119,31 @@ export function createApp() {
   app.get('/auth/verify', (req, res) => {
     res.send(authPage({ token: String(req.query.token || ''), lang: pageLang(req) }));
   });
+  // Sign in with Google or Microsoft, or link such an account to the signed-in person
+  app.get('/auth/oauth/:provider/start', loadUser, async (req, res) => {
+    try {
+      res.redirect(303, await oauth.startUrl(req.params.provider, { mode: req.query.mode === 'link' ? 'link' : 'signin', user: req.user, lang: pageLang(req) }));
+    } catch (err) { res.status(err.status || 500).send(oauthPage({ message: err.status ? err.message : 'Something went wrong. Try again.', lang: pageLang(req) })); }
+  });
+  app.get('/auth/oauth/:provider/callback', loadUser, async (req, res) => {
+    if (req.query.error) return res.redirect(303, '/'); // the person cancelled at the provider
+    try {
+      const r = await oauth.finish(req.params.provider, { code: req.query.code, state: req.query.state, currentUser: req.user });
+      if (r.linked) return res.redirect(303, '/#/?linked=' + encodeURIComponent(req.params.provider));
+      if (r.unknown) return res.status(403).send(oauthPage({ state: 'unknown', provider: r.label, lang: r.lang || pageLang(req) }));
+      setSessionCookie(res, await createSession(r.user, { userAgent: req.get('user-agent'), ip: req.ip }));
+      res.redirect(303, '/');
+    } catch (err) { res.status(err.status || 500).send(oauthPage({ message: err.status ? err.message : 'Something went wrong. Try again.', lang: pageLang(req) })); }
+  });
+
+  // "This was not me" from a new-sign-in warning: a page with a button, then every session ends
+  app.get('/auth/revoke', (req, res) => {
+    res.send(revokePage({ token: String(req.query.token || ''), lang: pageLang(req) }));
+  });
+  app.post('/auth/revoke', express.urlencoded({ extended: false, limit: '4kb' }), async (req, res) => {
+    const u = await revokeFromAlert(req.body?.token);
+    res.status(u ? 200 : 400).send(revokePage({ state: u ? 'done' : 'expired', lang: pageLang(req) }));
+  });
   app.post('/auth/verify', express.urlencoded({ extended: false, limit: '4kb' }), async (req, res) => {
     const sid = await redeemToken(req.body?.token, { userAgent: req.get('user-agent'), ip: req.ip });
     if (!sid) return res.status(400).send(authPage({ expired: true, lang: pageLang(req) }));
@@ -125,6 +153,8 @@ export function createApp() {
 
   app.use('/api', loadUser, requireAppHeader, api);
   app.use(express.static(fileURLToPath(new URL('../public/', import.meta.url)), { index: 'index.html', maxAge: '5m' }));
+  // the browser half of the passkey library, served as ES modules
+  app.use('/vendor/webauthn', express.static(fileURLToPath(new URL('../node_modules/@simplewebauthn/browser/esm/', import.meta.url)), { maxAge: '1d' }));
 
   app.use((err, req, res, _next) => {
     const status = err.status || err.statusCode || 500;

@@ -7,6 +7,7 @@ import { sha256 } from './ledger.js';
 import { queueEmail, renderEmail, flushEmails, clientPromo } from './mailer.js';
 import { translator, langFor } from './i18n.js';
 import { confirmSignup, checkTrialInvites } from './billing.js';
+import { noteDevice } from './devices.js';
 
 const COOKIE = 'vx_session';
 
@@ -57,11 +58,20 @@ export async function redeemToken(token, meta) {
   if (t) ({ rows: [u] } = await query('select * from users where id = $1 and disabled_at is null', [t.user_id]));
   else u = await confirmSignup(token); // a sign-up link: the firm is created now
   if (!u) return null;
+  return createSession(u, meta);
+}
+
+/**
+ * Start a session for a person who has proved who they are (email link, passkey, Google or Microsoft).
+ * With an authenticator app set up, the session waits for its code unless the sign-in was itself
+ * a strong second factor (a passkey).
+ */
+export async function createSession(u, meta = {}, { strong = false } = {}) {
   const sid = randomBytes(32).toString('base64url');
   const days = u.role === 'accountant' ? config.accountantSessionDays : config.sessionDays;
-  // with a second factor set up, the session is not usable until the code is entered
   await query(`insert into sessions (id_hash, user_id, expires_at, user_agent, ip, mfa_pending) values ($1, $2, now() + make_interval(days => $3), $4, $5, $6)`,
-    [sha256(sid), u.id, days, String(meta.userAgent || '').slice(0, 300), meta.ip || '', !!u.totp_enabled_at]);
+    [sha256(sid), u.id, days, String(meta.userAgent || '').slice(0, 300), meta.ip || '', !!u.totp_enabled_at && !strong]);
+  await noteDevice(u, meta).catch((err) => console.error('device note', err.message));
   return sid;
 }
 
@@ -85,17 +95,18 @@ export async function loadUser(req, _res, next) {
   req.session = null;
   if (sid) {
     const { rows: [u] } = await query(
-      `select u.*, s.id_hash as session_hash, s.mfa_pending, s.last_seen_at, f.require_mfa, f.plan as firm_plan, f.trial_ends_at as firm_trial_ends_at
+      `select u.*, s.id_hash as session_hash, s.mfa_pending, s.last_seen_at, f.require_mfa, f.plan as firm_plan, f.trial_ends_at as firm_trial_ends_at,
+              exists (select 1 from passkeys p where p.user_id = u.id) as has_passkey
        from sessions s join users u on u.id = s.user_id left join firms f on f.id = u.firm_id
        where s.id_hash = $1 and s.expires_at > now() and u.disabled_at is null`, [sha256(sid)]);
     if (u && u.role === 'accountant' && Date.now() - new Date(u.last_seen_at) > config.accountantIdleHours * 36e5) {
       // an accountant who has been away too long signs in again
       await query('delete from sessions where id_hash = $1', [u.session_hash]);
     } else if (u) {
-      const { session_hash, mfa_pending, last_seen_at, require_mfa, firm_plan, firm_trial_ends_at, ...user } = u;
+      const { session_hash, mfa_pending, last_seen_at, require_mfa, firm_plan, firm_trial_ends_at, has_passkey, ...user } = u;
       req.user = user;
       req.firm = user.firm_id ? { plan: firm_plan, trial_ends_at: firm_trial_ends_at } : null;
-      req.session = { hash: session_hash, mfaPending: mfa_pending, mfaSetupRequired: !!require_mfa && user.role === 'accountant' && !user.totp_enabled_at };
+      req.session = { hash: session_hash, mfaPending: mfa_pending, mfaSetupRequired: !!require_mfa && user.role === 'accountant' && !user.totp_enabled_at && !has_passkey, hasPasskey: has_passkey };
       if (Date.now() - new Date(last_seen_at) > 5 * 60e3) await query('update sessions set last_seen_at = now() where id_hash = $1', [session_hash]);
     }
   }
@@ -113,7 +124,7 @@ export class HttpError extends Error {
 }
 
 // Before the second factor (or its required set-up) only these API paths are open.
-const MFA_OPEN = /^\/(me|auth\/mfa|auth\/logout|me\/2fa\/(setup|enable))$/;
+const MFA_OPEN = /^\/(me|auth\/mfa|auth\/logout|me\/2fa\/(setup|enable)|passkeys(\/options)?)$/;
 
 export function requireUser(req, _res, next) {
   if (!req.user) throw new HttpError(401, 'Sign in to continue.');

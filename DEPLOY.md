@@ -239,6 +239,33 @@ GoCardless и Stripe уже указаны в списке субподрядч�
 - Статистика без cookies: Cloudflare → Web Analytics → добавить сайт → скопировать token в
   `site/src/company.mjs` (`analyticsToken`) и пересобрать сайт.
 
+## 15. Вход через Google и Microsoft, ключи доступа
+
+**Ключи доступа (passkeys)** работают сразу, настраивать ничего не нужно. Человек добавляет ключ в
+«Ваш аккаунт → Способы входа» и затем входит по Face ID, Touch ID или Windows Hello. Ключ доступа
+считается двухшаговой проверкой, в том числе когда фирма её требует.
+
+**Google** (кнопка появится, когда заданы обе переменные):
+1. console.cloud.google.com → создать проект → **APIs & Services → OAuth consent screen**: тип External,
+   название Pescada, логотип, support email, домены `pescada.io`; scopes: `openid`, `email`, `profile`.
+2. **Credentials → Create credentials → OAuth client ID** → Web application.
+   Authorized redirect URI: `https://app.pescada.io/auth/oauth/google/callback`
+3. В `deploy/.env`: `GOOGLE_CLIENT_ID=...` и `GOOGLE_CLIENT_SECRET=...`, затем `bash deploy/update.sh`.
+Аккаунт Google с подтверждённой почтой, совпадающей с адресом в Pescada, привязывается при первом входе сам.
+
+**Microsoft** (рабочие и учебные аккаунты Microsoft 365):
+1. portal.azure.com → **Microsoft Entra ID → App registrations → New registration**: имя Pescada,
+   Supported account types: *Accounts in any organizational directory (multitenant)*,
+   Redirect URI (Web): `https://app.pescada.io/auth/oauth/microsoft/callback`.
+2. **Certificates & secrets → New client secret** (срок 24 месяца; поставьте напоминание продлить).
+3. В `deploy/.env`: `MICROSOFT_CLIENT_ID=<Application (client) ID>`, `MICROSOFT_CLIENT_SECRET=<Value секрета>`,
+   затем `bash deploy/update.sh`.
+Аккаунт Microsoft никогда не сопоставляется по почте: человек один раз входит по ссылке из письма и
+привязывает его в «Ваш аккаунт → Способы входа».
+
+**Поддержка:** сообщения из кнопки «?» → «Написать нам» приходят на `SUPPORT_EMAIL`
+(по умолчанию `DEMO_EMAIL`, то есть hello@pescada.io); ответ уходит прямо отправителю.
+
 ## Полезные команды
 
 ```sh

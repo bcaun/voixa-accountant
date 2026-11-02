@@ -127,6 +127,12 @@ exports, the append-only guard and detection of a tampered log.
   throwaway mail domains and per-IP/per-address limits stop robots. `SIGNUP_DAILY_MAX` (20) caps requests per day,
   `TRIAL_MAX_CLIENTS` (10) and `TRIAL_MAX_INVITES` (20 a day) limit trial firms, and `SIGNUP_NOTIFY_EMAIL` is told of each new firm.
 - **Bank feeds:** `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`, `BANK_FEED_SYNC_HOURS` (default 12).
+- **Sign-in:** besides email links, passkeys (WebAuthn, no setup; they count as two-step sign-in) and Google /
+  Microsoft (OpenID Connect) when `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` or `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`
+  are set (redirect URIs `/auth/oauth/google/callback`, `/auth/oauth/microsoft/callback`; `MICROSOFT_TENANT` defaults to
+  `organizations`). Microsoft accounts are only linked by the signed-in person, never matched by email. A sign-in from a
+  new browser or device is reported by email with a one-click "sign out everywhere" link. `SUPPORT_EMAIL` receives in-app
+  support messages.
 - **Closing clients:** `CLOSE_EXPORT_DAYS` (30) export window, then blocked; purged after `RETENTION_YEARS` (6).
 - **Firms and accountants** are created from the command line (`create-firm`, `create-accountant --firm`,
   `list-firms`). Clients are invited from the app. A firm can change its name and default country in the app.

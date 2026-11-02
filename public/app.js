@@ -3,6 +3,7 @@
 // re-reads the workspace afterwards so what you see is what the log holds.
 
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const H = 36e5, D = 864e5;
 const CATS = { 'Invoice': ['INV', 'sand'], 'Bank statement': ['BNK', 'sky'], 'Contract': ['CTR', 'fog'], 'Receipt': ['RCT', 'sand'], 'Tax return': ['TAX', 'gold'],
@@ -255,13 +256,56 @@ function redrawList(key) {
 const newest = (a, b) => new Date(b.status.sent_at || b.created_at) - new Date(a.status.sent_at || a.created_at);
 
 /* ---------- header ---------- */
+/* ---------- help, support and what is new ---------- */
+const NEWS = [
+  { date: '2026-11-02', items: [
+    'Preview PDFs and photos without downloading them, and move between documents with ← and →.',
+    'Import your clients from a spreadsheet, and request a document from several clients at once.',
+    'Sign in with a passkey (Face ID, Touch ID, Windows Hello), with Google or with Microsoft.',
+    'An email warns you when your account is used on a new browser or device.'] },
+  { date: '2026-11-01', items: [
+    'Pescada in Spanish, Italian, French, German, Portuguese and English.',
+    'A daily summary email for accountants, two-step sign-in and virus scanning.'] },
+];
+const FAQ = {
+  accountant: [
+    ['How do I add many clients at once?', 'Use Add a client, then Import them from a spreadsheet. Save your list as CSV; Pescada checks every row before anything is created.'],
+    ['How do I ask all my clients for the same document?', 'Open All clients and use Request from several clients. Each client gets its own request, email and reminders.'],
+    ['What can I use as proof?', 'Every step is in the client’s activity log with its time and the file’s fingerprint. Open a document and use Open printable report for a one-page record you can print or save as PDF.'],
+    ['A client says the email never arrived.', 'Open the document: under Email notifications you see whether it was delivered or bounced. Check the address in People, then use Send reminder.'],
+    ['How do I protect my account?', 'In Your account, add a passkey or two-step sign-in. A firm administrator can require two-step sign-in for the whole team in Firm settings.'],
+    ['How is the subscription counted?', 'By open client workspaces; closed clients are not counted. Firm settings → Subscription shows the plan, card and invoices.'],
+  ],
+  client: [
+    ['How do I send documents?', 'Drop files on the form or choose them. On a phone you can take photos; they are joined into one PDF before sending.'],
+    ['Why must I open a document before confirming it?', 'So that the record shows you saw the exact version you confirm. Opening and confirming are both logged with their time.'],
+    ['Who can see my documents?', 'Only the people of your company listed under People, and your accountant’s firm. Other clients of the firm cannot see them.'],
+    ['I changed my email address.', 'Ask your accountant to add the new address to your workspace and remove the old one.'],
+    ['Is it safe?', 'Files are stored in the EU, travel encrypted, are checked for viruses, and every step is recorded in a log that cannot be edited.'],
+  ],
+};
+function helpModal() {
+  try { localStorage.setItem('pescada.news', NEWS[0].date); } catch { /* private mode */ }
+  renderHeader();
+  const faq = FAQ[S.me.role === 'accountant' ? 'accountant' : 'client'];
+  openModal(`${modalHead(t('Help'))}<div class="modal-b help">
+    <section><h3>${t('What is new')}</h3>${NEWS.map((n) => `<p class="sub" style="margin:8px 0 4px">${fmtDate(n.date)}</p><ul>${n.items.map((i) => `<li>${t(i)}</li>`).join('')}</ul>`).join('')}</section>
+    <section><h3>${t('Questions')}</h3>${faq.map(([q, a]) => `<details><summary>${t(q)}</summary><p>${t(a)}</p></details>`).join('')}</section>
+    <section><h3>${t('Write to us')}</h3>
+      <form id="supForm" novalidate style="display:grid;gap:10px"><textarea id="sup-msg" class="input" rows="4" placeholder="${esc(t('What happened, and where? We answer by email, usually the same working day.'))}"></textarea>
+      <p class="err" id="supErr" hidden></p><div><button class="btn primary" type="submit" id="supBtn">${t('Send')}</button></div></form>
+      <p class="sub" style="font-size:12.5px">${t('Your name, email, firm and browser are sent with the message so we can help faster.')}</p></section></div>`);
+}
+
 function renderHeader() {
   const h = $('#hdrRight');
   if (!S.me) { h.innerHTML = ''; return; }
   const switcher = S.me.role === 'client' && S.companies.length > 1
     ? `<select class="input" id="coSwitch" aria-label="${esc(t('Company'))}" style="width:auto">${S.companies.map((c) => `<option value="${c.id}" ${c.id === S.route.c ? 'selected' : ''}>${esc(c.name)}${new Set(S.companies.map((x) => x.firm_name)).size > 1 ? ` (${esc(c.firm_name)})` : ''}</option>`).join('')}</select>` : '';
   const firm = S.me.role === 'accountant' ? `<button class="btn small" data-act="firm-settings" title="${esc(t('Firm settings'))}">${esc(S.firm)} · ${esc(S.firmInfo?.country || '')}</button>` : '';
-  h.innerHTML = `${switcher}${firm}<button class="who linkbtn" style="font-size:13px;color:var(--text);text-decoration:none" data-act="account" title="${esc(t('Your account'))}"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? t('Accountant') : t('Client')}</button><button class="btn small" data-act="logout">${t('Sign out')}</button>`;
+  const unseen = (() => { try { return localStorage.getItem('pescada.news') !== NEWS[0].date; } catch { return false; } })();
+  const help = `<button class="icon-btn help-btn" data-act="help" aria-label="${esc(t('Help'))}" title="${esc(t('Help'))}">?${unseen ? '<i class="dot"></i>' : ''}</button>`;
+  h.innerHTML = `${help}${switcher}${firm}<button class="who linkbtn" style="font-size:13px;color:var(--text);text-decoration:none" data-act="account" title="${esc(t('Your account'))}"><i></i>${esc(S.me.name || S.me.email)} · ${S.me.role === 'accountant' ? t('Accountant') : t('Client')}</button><button class="btn small" data-act="logout">${t('Sign out')}</button>`;
   $('#coSwitch')?.addEventListener('change', (e) => go(e.target.value));
 }
 
@@ -275,8 +319,54 @@ function renderLogin(sentTo) {
       : t('Pescada is where you and your accountant send documents, and every step is recorded. Enter your email and we will send you a sign-in link.')}</p></div>
       <div class="field"><label for="li-email">${t('Email')}</label><input id="li-email" class="input" type="email" autocomplete="email" required></div>
       <p class="err" id="liErr" hidden></p><button class="btn primary" type="submit">${t('Email me a sign-in link')}</button>
+      <div class="or"><span>${t('or')}</span></div>
+      <div class="alt-signin" id="altSignin">
+        <button type="button" class="btn" data-act="passkey-signin" id="pkBtn" hidden>${KEY_ICON}${t('Sign in with a passkey')}</button>
+        <a class="btn" href="/auth/oauth/google/start" id="gBtn" hidden>${G_ICON}${t('Continue with Google')}</a>
+        <a class="btn" href="/auth/oauth/microsoft/start" id="msBtn" hidden>${MS_ICON}${t('Continue with Microsoft')}</a>
+      </div>
       <p class="sub" style="font-size:14px">${t('New accounting firm?')} <button type="button" class="linkbtn" style="font-size:14px" data-act="signup">${t('Start a free trial')}</button></p></form>`}</section>`;
   $('#li-email')?.focus();
+  if (!sentTo) showAltSignin();
+}
+const KEY_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2"/></svg>';
+const G_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.3Z"/><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2L6.4 14Z"/><path fill="#EA4335" d="M12 6c1.5 0 2.8.5 3.8 1.5l2.9-2.9A10 10 0 0 0 3.1 7.4L6.4 10C7.2 7.7 9.4 6 12 6Z"/></svg>';
+const MS_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#F25022" d="M3 3h8.5v8.5H3z"/><path fill="#7FBA00" d="M12.5 3H21v8.5h-8.5z"/><path fill="#00A4EF" d="M3 12.5h8.5V21H3z"/><path fill="#FFB900" d="M12.5 12.5H21V21h-8.5z"/></svg>';
+async function showAltSignin() {
+  let p = {};
+  try { p = await api('/auth/providers'); } catch { /* only the email link then */ }
+  const pk = p.passkeys && !!window.PublicKeyCredential;
+  if ($('#pkBtn')) $('#pkBtn').hidden = !pk;
+  if ($('#gBtn')) $('#gBtn').hidden = !p.google;
+  if ($('#msBtn')) $('#msBtn').hidden = !p.microsoft;
+  if (!pk && !p.google && !p.microsoft) { $('#altSignin')?.remove(); document.querySelector('.or')?.remove(); }
+}
+const webauthn = () => import('/vendor/webauthn/index.js');
+async function passkeySignin() {
+  try {
+    const { startAuthentication } = await webauthn();
+    const { options, challengeId } = await api('/auth/passkey/options', { method: 'POST', body: {} });
+    const response = await startAuthentication({ optionsJSON: options });
+    await api('/auth/passkey', { method: 'POST', body: { challengeId, response } });
+    location.hash = '#/'; location.reload();
+  } catch (err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return; // the person cancelled
+    showErr('#liErr', t(err.message));
+  }
+}
+async function addPasskey() {
+  try {
+    const { startRegistration } = await webauthn();
+    const { options, challengeId } = await api('/passkeys/options', { method: 'POST', body: {} });
+    const response = await startRegistration({ optionsJSON: options });
+    const ua = navigator.userAgent, name = /iPhone|iPad/.test(ua) ? 'iPhone / iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : t('Passkey');
+    await api('/passkeys', { method: 'POST', body: { challengeId, response, name } });
+    toast(t('Passkey added. Next time, sign in with it.'));
+    return true;
+  } catch (err) {
+    if (err?.name === 'NotAllowedError' || err?.name === 'AbortError') return false;
+    toast(t(err.message)); return false;
+  }
 }
 const SIGNUP_COUNTRIES = ['ES', 'IT', 'FR', 'DE', 'PT'];
 function renderSignup(sentTo) {
@@ -347,7 +437,8 @@ function renderMfaSetupRequired() {
   $('#hdrRight').innerHTML = `<button class="btn small" data-act="logout">${t('Sign out')}</button>`;
   const why = S.firm ? t('{firm} requires a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) when accountants sign in. It takes a minute.', { firm: esc(S.firm) })
     : t('Your firm requires a code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) when accountants sign in. It takes a minute.');
-  $('#view').innerHTML = `<section class="card pad setup" style="max-width:560px;margin:40px auto">${setupBlock(`<div><h1>${t('Set up two-step sign-in')}</h1><p class="sub" style="margin-top:6px">${why}</p></div>`)}</section>`;
+  $('#view').innerHTML = `<section class="card pad setup" style="max-width:560px;margin:40px auto">${setupBlock(`<div><h1>${t('Set up two-step sign-in')}</h1><p class="sub" style="margin-top:6px">${why}</p></div>`)}
+    ${window.PublicKeyCredential ? `<p class="sub" style="margin-top:14px">${t('Or use a passkey instead: Face ID, Touch ID, Windows Hello or a security key. It counts as two-step sign-in.')}</p><div><button class="btn" data-act="passkey-add-required">${KEY_ICON}${t('Add a passkey')}</button></div>` : ''}</section>`;
 }
 async function startMfaSetup() {
   const box = $('#mfaSetup'); if (!box) return;
@@ -469,12 +560,28 @@ async function accountModal() {
        <form id="mfaManage" novalidate style="display:grid;gap:10px"><div class="field"><label for="mm-code">${t('Current code from your app')}</label><input id="mm-code" class="input" inputmode="numeric" maxlength="6" style="font-family:var(--f-mono)"></div>
        <p class="err" id="mmErr" hidden></p><div class="dr-actions"><button class="btn" type="submit" data-do="recovery">${t('New recovery codes')}</button><button class="btn" type="submit" data-do="disable">${t('Turn off')}</button></div></form>`
     : setupBlock(`<p>${acc ? t('You see the documents of every client of the firm. A code from an authenticator app at sign-in keeps them safe even if someone gets into your email.') : t('Add a code from an authenticator app to your sign-in.')}</p>`)}
+    <h3 style="margin-top:8px">${t('Sign-in methods')}</h3>
+    <div id="signinMethods"><p class="loading" style="padding:4px 0">${t('Loading…')}</p></div>
     <h3 style="margin-top:8px">${t('Where you are signed in')}</h3>
     <div class="people">${sessions.map((x) => `<div class="person"><div><b>${esc(device(x.device))}</b>${x.current ? ` <span class="pill sent" style="margin-left:6px">${t('This device')}</span>` : ''}<br><span class="sub">${t('Signed in {date} · last active {time}', { date: fmtDate(x.created_at), time: ago(x.last_seen_at) })}${x.ip ? ` · ${esc(x.ip)}` : ''}</span></div>
       ${x.current ? '' : `<button class="btn small" data-act="session-out" data-id="${x.id}">${t('Sign out')}</button>`}</div>`).join('')}</div>
     ${sessions.length > 1 ? `<div><button class="btn" data-act="sessions-out">${t('Sign out everywhere else')}</button></div>` : ''}
   </div>`);
   if (!acc) { $('#ac-mode').closest('.grid2').hidden = true; $('#ac-mode').closest('form').querySelector('.sub').hidden = true; }
+  renderSigninMethods();
+}
+async function renderSigninMethods() {
+  const box = $('#signinMethods'); if (!box) return;
+  let pk = [], ids = { identities: [], providers: {} };
+  try { [pk, ids] = await Promise.all([api('/passkeys').then((r) => r.passkeys), api('/identities')]); } catch { /* shown empty */ }
+  const label = { google: 'Google', microsoft: 'Microsoft' };
+  const linked = (p) => ids.identities.find((x) => x.provider === p);
+  box.innerHTML = `<p class="sub" style="font-size:13px">${t('Besides the email link, you can sign in with a passkey (Face ID, Touch ID, Windows Hello) or a linked Google or Microsoft account.')}</p>
+    <div class="people">${pk.map((k) => `<div class="person"><div><b>${KEY_ICON} ${esc(k.name)}</b><br><span class="sub">${t('Added {date}', { date: fmtDate(k.created_at) })}${k.last_used_at ? ` · ${t('last used {time}', { time: ago(k.last_used_at) })}` : ''}</span></div><button class="btn small" data-act="passkey-remove" data-id="${esc(k.id)}">${t('Remove')}</button></div>`).join('')}
+    ${['google', 'microsoft'].filter((p) => ids.providers[p] || linked(p)).map((p) => linked(p)
+      ? `<div class="person"><div><b>${p === 'google' ? G_ICON : MS_ICON} ${label[p]}</b><br><span class="sub">${esc(linked(p).email || '')}</span></div><button class="btn small" data-act="identity-unlink" data-p="${p}">${t('Unlink')}</button></div>`
+      : `<div class="person"><div><b>${p === 'google' ? G_ICON : MS_ICON} ${label[p]}</b><br><span class="sub">${t('Not linked')}</span></div><a class="btn small" href="/auth/oauth/${p}/start?mode=link">${t('Link')}</a></div>`).join('')}</div>
+    ${window.PublicKeyCredential ? `<div><button class="btn" data-act="passkey-add">${KEY_ICON}${t('Add a passkey')}</button></div>` : ''}`;
 }
 
 /* ---------- shell (built once per view, holds forms) ---------- */
@@ -628,7 +735,8 @@ function renderAcc() {
     else body = `<div class="tbl-wrap"><table><thead><tr><th>${t('No.')}</th><th>${t('Client')}</th><th>${t('Not opened by you')}</th><th>${t('Opened, not confirmed')}</th><th>${t('Reports you owe')}</th><th>${t('Waiting on client')}</th><th>${t('Overdue requests')}</th><th>${t('Next deadline')}</th></tr></thead><tbody>${all.map(({ c, k }) =>
       `<tr class="click" data-act="client" data-id="${c.id}"><td class="mono">#${c.no}</td><td><b style="color:var(--ink)">${esc(c.name)}</b><br><span style="color:var(--muted)"><span class="mono">${esc(c.country || '')}</span>${c.nif ? ` · ${esc(taxLabel(c.country))} ${esc(c.nif)}` : ''}</span></td>${[k.unopened, k.unconf, k.expected, k.waiting, k.overdue].map((n) => `<td class="num ${n ? '' : 'zero'}">${n}</td>`).join('')}<td>${k.next ? `${fmtDate(k.next.due_at)}<br><span style="color:var(--muted)">${esc(k.next.title)}</span>` : `<span style="color:var(--muted)">${t('None')}</span>`}</td></tr>`).join('')}</tbody></table></div>`;
     const hi = first(S.me.name) ? t('Good to see you, {name}', { name: esc(first(S.me.name)) }) : t('Good to see you');
-    m.innerHTML = planBanner() + `<div class="ws-h"><div><h1>${hi}</h1><p class="sub" style="margin-top:6px">${tn(o.companies.length, '{firm} · {n} client workspace', '{firm} · {n} client workspaces', { firm: esc(S.firm) })}</p></div></div>
+    m.innerHTML = planBanner() + `<div class="ws-h"><div><h1>${hi}</h1><p class="sub" style="margin-top:6px">${tn(o.companies.length, '{firm} · {n} client workspace', '{firm} · {n} client workspaces', { firm: esc(S.firm) })}</p></div>
+      ${o.companies.length > 1 ? `<div class="actions"><button class="btn" data-act="bulk-request">${t('Request from several clients')}</button></div>` : ''}</div>
       <div class="kpis"><div class="kpi ${sum('stale') ? 'alert' : ''}"><b class="num">${sum('unopened')}</b><span>${sum('stale') ? t('Documents you have not opened · {n} over 48 h', { n: sum('stale') }) : t('Documents you have not opened')}</span></div>
       <div class="kpi"><b class="num">${sum('unconf')}</b><span>${t('Opened, receipt not confirmed')}</span></div>
       <div class="kpi"><b class="num">${sum('expected')}</b><span>${t('Reports you still owe')}</span></div>
@@ -914,6 +1022,16 @@ const scanLine = (v) => ({
 }[v.scan_status] || '');
 
 /* ---------- drawer ---------- */
+/** The items next to this one, in the order its list shows them: documents from the client, or items sent to the client. */
+function siblings(it) {
+  const fromClient = (x) => x.kind === 'doc';
+  return S.ws.items.filter((x) => fromClient(x) === fromClient(it)).sort(newest);
+}
+function stepItem(step) {
+  const it = S.route.i && item(S.route.i); if (!it) return;
+  const sib = siblings(it), next = sib[sib.findIndex((x) => x.id === it.id) + step];
+  if (next) { S.preview = null; go(S.route.c, next.id); }
+}
 function renderDrawer() {
   const d = $('#drawer'), sc = $('#scrim');
   const it = S.route.i && item(S.route.i);
@@ -928,7 +1046,9 @@ function renderDrawer() {
   const kindLabel = { doc: t('Document'), report: t('Report'), request: t('Document request') }[it.kind];
   const doneVerb = it.kind === 'doc' ? t('Confirm receipt') : t('Approve report');
   let acts = '';
-  if (cur) acts += `<a class="btn ${rec && !it.opened_by_me ? 'primary' : ''}" href="/api/items/${it.id}/file?v=${cur.version}" target="_blank" rel="noopener" data-act="opened-file">${t('Open document')}</a><a class="btn" href="/api/items/${it.id}/file?v=${cur.version}&download=1" data-act="opened-file">${t('Download')}</a>`;
+  const canPreview = cur && cur.scan_status !== 'infected' && /^(application\/pdf|image\/(png|jpeg|gif|webp))$/.test(cur.mime || '');
+  if (canPreview) acts += `<button class="btn ${rec && !it.opened_by_me ? 'primary' : ''}" data-act="preview">${S.preview === it.id ? t('Hide preview') : t('Preview')}</button>`;
+  if (cur) acts += `<a class="btn ${rec && !it.opened_by_me && !canPreview ? 'primary' : ''}" href="/api/items/${it.id}/file?v=${cur.version}" target="_blank" rel="noopener" data-act="opened-file">${t('Open document')}</a><a class="btn" href="/api/items/${it.id}/file?v=${cur.version}&download=1" data-act="opened-file">${t('Download')}</a>`;
   if (rec && s.state !== 'done') {
     if (it.kind !== 'request' && cur) acts += `<button class="btn ok" data-act="confirm" ${it.opened_by_me ? '' : 'disabled'}>${doneVerb}</button>`;
     if (it.kind === 'report' && cur) acts += `<button class="btn" data-act="changes" ${it.opened_by_me ? '' : 'disabled'}>${t('Ask for changes')}</button>`;
@@ -960,11 +1080,16 @@ function renderDrawer() {
   ].filter(Boolean);
   const emails = it.emails.filter((e) => !s.version_at || new Date(e.created_at) >= new Date(s.version_at) - 5000);
   const evs = w.events.filter((e) => e.item_id === it.id);
-  $('#drawer').innerHTML = `<header class="dr-h"><div style="min-width:0"><p class="eyebrow">${esc(kindLabel.toLocaleUpperCase(LOCALE))} · ${it.ref}</p><h2>${esc(it.title)}</h2></div><button class="icon-btn" data-act="close-drawer" aria-label="${esc(t('Close'))}">×</button></header>
+  const sib = siblings(it), pos = sib.findIndex((x) => x.id === it.id);
+  const nav = sib.length > 1 ? `<div class="dr-nav"><button class="icon-btn" data-act="item-step" data-step="-1" ${pos <= 0 ? 'disabled' : ''} aria-label="${esc(t('Previous'))}" title="${esc(t('Previous'))} (←)">‹</button><span class="mono">${pos + 1}/${sib.length}</span><button class="icon-btn" data-act="item-step" data-step="1" ${pos >= sib.length - 1 ? 'disabled' : ''} aria-label="${esc(t('Next'))}" title="${esc(t('Next'))} (→)">›</button></div>` : '';
+  $('#drawer').innerHTML = `<header class="dr-h">${nav}<div style="min-width:0;flex:1"><p class="eyebrow">${esc(kindLabel.toLocaleUpperCase(LOCALE))} · ${it.ref}</p><h2>${esc(it.title)}</h2></div><button class="icon-btn" data-act="close-drawer" aria-label="${esc(t('Close'))}">×</button></header>
   <div class="dr-b">
     ${tracker(it, true)}
     ${deadlineNote(it) ? `<p style="font-size:13px" class="rs">${deadlineNote(it)}</p>` : ''}
     <div class="dr-actions">${acts}</div>
+    ${canPreview && S.preview === it.id ? `<div class="preview">${cur.mime === 'application/pdf'
+      ? `<iframe src="/api/items/${it.id}/file?v=${cur.version}&preview=1" title="${esc(cur.file_name)}"></iframe>`
+      : `<img src="/api/items/${it.id}/file?v=${cur.version}&preview=1" alt="${esc(cur.file_name)}">`}</div>` : ''}
     <dl class="meta">${meta.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}${linked ? `<dt>${it.fulfilled_by ? t('Fulfilled by') : t('Answers request')}</dt><dd><a href="#/c/${w.company.id}/i/${linked.id}" style="color:var(--blue)">${esc(linked.title)}</a></dd>` : ''}</dl>
     ${it.versions.length ? `<section style="display:grid;gap:10px"><h3>${t('Files')}</h3><ul class="versions">${it.versions.slice().reverse().map((v) => `<li class="${v === cur ? 'cur' : ''}"><div><b style="color:var(--ink)">v${v.version} · ${esc(v.file_name)}</b> · ${fmtSize(v.size)} ${v === cur ? `<span class="pill sent" style="margin-left:6px">${t('Current')}</span>` : ''}</div>
       <div class="sub">${v.uploaded_by ? t('Uploaded {time} by {name}', { time: fmt(v.uploaded_at), name: esc(v.uploaded_by) }) : t('Uploaded {time}', { time: fmt(v.uploaded_at) })}${v.replace_reason ? `. ${t('Reason for replacing: {reason}', { reason: esc(v.replace_reason) })}` : ''}</div>
@@ -1011,6 +1136,26 @@ function requestModal() {
     <p class="err" id="rqErr" hidden></p>
     <div class="dr-actions"><button class="btn primary" type="submit" id="rqBtn">${t('Send request')}</button>${cancelBtn()}</div></form>`);
 }
+function bulkRequestModal() {
+  const month = nowMonth();
+  const cos = (S.companies || []).filter((c) => !c.closed_at);
+  openModal(`${modalHead(t('Request a document from several clients'))}
+  <form class="modal-b" id="brForm" novalidate>
+    <div class="field"><label for="br-title">${t('What do you need?')}</label><input id="br-title" class="input" value="${esc(t('Invoices and receipts, {month}', { month }))}"></div>
+    <div class="grid2"><div class="field"><label for="br-due">${t('Due date')}</label><input id="br-due" class="input" type="date" value="${isoIn(7)}"></div><div></div></div>
+    <div class="field"><label for="br-note">${t('Details (optional)')}</label><textarea id="br-note" class="input" rows="2"></textarea></div>
+    <div class="field"><label>${t('Clients')}</label>
+      <div class="dr-actions" style="margin:0"><input id="br-q" class="input" type="search" placeholder="${esc(t('Filter by name or number'))}" style="flex:1;min-width:160px"><button type="button" class="btn small" data-act="br-all">${t('All')}</button><button type="button" class="btn small" data-act="br-none">${t('None')}</button></div>
+      <div class="checklist" id="br-list">${cos.map((c) => `<label data-q="${esc(`${c.no} ${c.name}`.toLowerCase())}"><input type="checkbox" value="${c.id}" checked> <span class="mono">#${c.no}</span> ${esc(c.name)}</label>`).join('')}</div></div>
+    <p class="sub" style="font-size:13px">${t('Each client gets its own request with this due date, an email, and the usual reminders. Every step is recorded in each client’s log.')}</p>
+    <p class="err" id="brErr" hidden></p>
+    <div class="dr-actions"><button class="btn primary" type="submit" id="brBtn">${tn(cos.length, 'Send to {n} client', 'Send to {n} clients')}</button>${cancelBtn()}</div></form>`);
+  const count = () => { const n = $$('#br-list input:checked').length; $('#brBtn').textContent = tn(n, 'Send to {n} client', 'Send to {n} clients'); $('#brBtn').disabled = !n; };
+  $('#br-list').addEventListener('change', count);
+  $('#br-q').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); $$('#br-list label').forEach((l) => { l.hidden = !!q && !l.dataset.q.includes(q.replace('#', '')); }); });
+  S.brCount = count;
+}
+
 function replaceModal(it) {
   openModal(`${modalHead(t('Replace file: {title}', { title: it.title }))}
   <form class="modal-b" id="rvForm" novalidate><p class="sub">${it.kind === 'doc' ? t('The current version stays in the record. The other side is notified and has to open and confirm the new version.') : t('The current version stays in the record. The other side is notified and has to open and approve the new version.')}</p>
@@ -1033,11 +1178,59 @@ function clientModal(edit) {
     <p class="sub" style="font-size:13px" id="co-hint">${countryHint(k)}</p>
     ${invite}
     <p class="err" id="coErr" hidden></p>
-    <div class="dr-actions"><button class="btn primary" type="submit">${edit ? t('Save') : t('Create workspace')}</button>${cancelBtn()}</div></form>
+    <div class="dr-actions"><button class="btn primary" type="submit">${edit ? t('Save') : t('Create workspace')}</button>${cancelBtn()}</div>
+    ${edit ? '' : `<p class="sub" style="font-size:13.5px">${t('Many clients at once?')} <button type="button" class="linkbtn" data-act="import-clients">${t('Import them from a spreadsheet')}</button></p>`}</form>
     ${edit && isAdmin() ? `<div class="modal-b" style="border-top:1px solid var(--line)"><h3>${t('Close this client')}</h3>
       <p class="sub" style="font-size:13.5px">${t('At the end of the contract: the client’s people lose access at once and are told by email. You can still read and export everything for 30 days, and reopen it in that time. After that the workspace is blocked, and it is deleted once the legal retention period of its documents is over.')}</p>
       <div><button class="btn" type="button" data-act="close-client">${t('Close this client…')}</button></div></div>` : ''}`);
 }
+/* ---------- importing clients from a spreadsheet ---------- */
+function importModal() {
+  openModal(`${modalHead(t('Import clients'))}<div class="modal-b" id="impBody">
+    <p class="sub">${t('Save your client list as CSV (in Excel: File → Save as → CSV). One client per row, with a header row. Columns are recognised by their names; only the name is required.')}</p>
+    <p class="sub" style="font-size:13px">${t('Columns: name, tax ID, city, country (ES, IT, FR, DE or PT; the firm’s country if empty), contact name, contact email.')} <button type="button" class="linkbtn" data-act="import-template">${t('Download a template')}</button></p>
+    <div class="field"><label for="imp-file">${t('File')}</label><input id="imp-file" class="input" type="file" accept=".csv,text/csv,text/plain"></div>
+    <p class="err" id="impErr" hidden></p>
+    <div class="dr-actions"><button class="btn primary" data-act="import-check">${t('Check the file')}</button>${cancelBtn()}</div></div>`);
+}
+const IMP_STATUS = { ok: ['ok', 'Ready'], duplicate: ['muted', 'Already there'], error: ['bad', 'Problem'], created: ['ok', 'Created'] };
+function importResult(plan, done) {
+  const n = (s) => plan.rows.filter((r) => r.status === s).length;
+  const rows = plan.rows.map((r) => `<tr><td class="mono">${r.line}</td><td><b>${esc(r.name || '—')}</b>${r.nif ? `<br><span class="sub">${esc(r.country)} · ${esc(r.nif)}</span>` : ''}</td>
+    <td>${r.email ? esc(r.email) : '<span class="sub">—</span>'}</td><td><span class="pill ${IMP_STATUS[r.status][0]}">${t(IMP_STATUS[r.status][1])}</span>${r.message ? `<br><span class="sub" style="font-size:12.5px">${esc(t(r.message))}</span>` : ''}</td></tr>`).join('');
+  $('#impBody').innerHTML = `${done
+    ? `<p><b>${tn(n('created'), '{n} client created.', '{n} clients created.')}</b> ${n('error') ? tn(n('error'), '{n} row could not be imported; see below.', '{n} rows could not be imported; see below.') : ''}</p>`
+    : `<p>${tn(n('ok'), '{n} client is ready to import.', '{n} clients are ready to import.')} ${n('duplicate') ? tn(n('duplicate'), '{n} is already among your clients and will be skipped.', '{n} are already among your clients and will be skipped.') : ''} ${n('error') ? tn(n('error'), '{n} row has a problem and will be skipped; fix it in the file and import again if you like.', '{n} rows have a problem and will be skipped; fix them in the file and import again if you like.') : ''}</p>`}
+    <div class="tbl-wrap" style="max-height:46vh;overflow:auto"><table class="tbl"><thead><tr><th>${t('Line')}</th><th>${t('Client')}</th><th>${t('Contact email')}</th><th>${t('Status')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="err" id="impErr" hidden></p>
+    ${done ? `<div class="dr-actions"><button class="btn primary" data-act="close-modal">${t('Done')}</button></div>`
+      : `${plan.rows.some((r) => r.status === 'ok' && r.email) ? `<label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" id="imp-invite" checked style="margin-top:4px"><span>${t('Invite the contacts now: each gets an email with a sign-in link to their workspace.')}</span></label>` : ''}
+      <div class="dr-actions"><button class="btn primary" data-act="import-run" ${n('ok') ? '' : 'disabled'}>${tn(n('ok'), 'Import {n} client', 'Import {n} clients')}</button><button class="btn" data-act="import-clients">${t('Choose another file')}</button></div>`}`;
+}
+async function importCheck(commit) {
+  const btn = $(commit ? '[data-act="import-run"]' : '[data-act="import-check"]');
+  if (!commit) {
+    const file = $('#imp-file')?.files?.[0];
+    if (!file) return showErr('#impErr', t('Choose the CSV file first.'));
+    if (file.size > 2 * 1024 * 1024) return showErr('#impErr', t('The file is larger than 2 MB. Split it into smaller files.'));
+    S.importText = await file.text();
+  }
+  const done = busy(btn, commit ? t('Importing…') : t('Checking…'));
+  try {
+    const plan = await api('/companies/import', { method: 'POST', body: { csv: S.importText, commit, invite: commit ? !!$('#imp-invite')?.checked : undefined } });
+    importResult(plan, commit);
+    if (commit) await refresh();
+  } catch (err) { done(); showErr('#impErr', t(err.message)); }
+}
+function importTemplate() {
+  const head = [t('Name'), t('Tax ID'), t('City'), t('Country'), t('Contact name'), t('Contact email')];
+  const ex = ['Sol y Mar Hospitality SL', 'B56781234', 'Valencia', 'ES', 'Daniel Moreau', 'daniel@example.com'];
+  const csv = '\uFEFF' + [head, ex].map((r) => r.map((x) => (/[;"\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x)).join(';')).join('\r\n') + '\r\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'pescada-clients.csv'; document.body.append(a); a.click(); a.remove();
+}
+
 function bankFeedsBlock() {
   if (!S.ws.company.pro) {
     // clients are not shown the upsell; accountants see what Pro would add
@@ -1203,6 +1396,27 @@ document.addEventListener('submit', async (e) => {
       const done = busy($('#rpBtn'), t('Sending…'));
       try { await upload(`/companies/${S.route.c}/reports`, form, pct('#rpProg')); closeModal(); S.tab[`acc:${S.route.c}`] = 'out'; toast(t('Report sent. The client has been notified.')); await refresh(); } catch (err) { showErr('#rpErr', err.message); done(); }
     }
+    if (f.id === 'supForm') {
+      const message = $('#sup-msg').value.trim();
+      if (!message) return showErr('#supErr', t('Write your message first.'));
+      const done = busy($('#supBtn'), t('Sending…'));
+      try { await api('/support', { method: 'POST', body: { message, page: location.hash } }); closeModal(); toast(t('Thank you. We will answer by email.')); } catch (err) { done(); showErr('#supErr', t(err.message)); }
+      return;
+    }
+    if (f.id === 'brForm') {
+      const companyIds = $$('#br-list input:checked').map((x) => x.value);
+      const body = { title: $('#br-title').value.trim(), due: $('#br-due').value, note: $('#br-note').value.trim(), companyIds };
+      if (!body.title || !body.due) return showErr('#brErr', t('Describe the document and set a due date.'));
+      if (!companyIds.length) return showErr('#brErr', t('Choose at least one client.'));
+      const done = busy($('#brBtn'), t('Sending…'));
+      try {
+        const r = await api('/requests/bulk', { method: 'POST', body });
+        closeModal();
+        toast(r.failed.length ? t('Request sent to {n} clients; {m} could not be sent.', { n: r.sent, m: r.failed.length }) : tn(r.sent, 'Request sent to {n} client.', 'Request sent to {n} clients.'));
+        await refresh();
+      } catch (err) { done(); showErr('#brErr', t(err.message)); }
+      return;
+    }
     if (f.id === 'rqForm') {
       const done = busy($('#rqBtn'), t('Sending…'));
       try { await api(`/companies/${S.route.c}/requests`, { method: 'POST', body: { title: $('#rq-title').value.trim(), due: $('#rq-due').value, note: $('#rq-note').value.trim() } }); closeModal(); S.tab[`acc:${S.route.c}`] = 'out'; toast(t('Request sent. The client has been notified.')); await refresh(); } catch (err) { showErr('#rqErr', err.message); done(); }
@@ -1339,6 +1553,8 @@ document.addEventListener('click', async (e) => {
     case 'logout': await api('/auth/logout', { method: 'POST', body: {} }).catch(() => {}); location.hash = ''; location.reload(); break;
     case 'login-again': history.replaceState(null, '', '#/'); renderLogin(); break;
     case 'opened-file': setTimeout(refresh, 1500); break;
+    case 'preview': { const id = S.route.i; S.preview = S.preview === id ? null : id; renderDrawer(); if (S.preview) setTimeout(refresh, 1500); break; }
+    case 'item-step': stepItem(Number(b.dataset.step)); break;
     case 'confirm': await act(`/items/${it.id}/confirm`, {}, it.kind === 'report' ? t('Report approved. Your accountant has been notified.') : t('Receipt confirmed. The sender has been notified.')); break;
     case 'changes': {
       const msg = $('#dr-note').value.trim();
@@ -1389,6 +1605,18 @@ document.addEventListener('click', async (e) => {
     case 'close-client': closeClientModal(); break;
     case 'acc-export': exportModal(); break;
     case 'pro-feature': proModal(b.dataset.what || ''); break;
+    case 'import-clients': importModal(); break;
+    case 'help': helpModal(); break;
+    case 'passkey-signin': passkeySignin(); break;
+    case 'passkey-add': if (await addPasskey()) renderSigninMethods(); break;
+    case 'passkey-add-required': if (await addPasskey()) location.reload(); break;
+    case 'passkey-remove': if (confirm(t('Remove this passkey? You can still sign in with an email link.'))) { try { await api(`/passkeys/${encodeURIComponent(b.dataset.id)}`, { method: 'DELETE' }); renderSigninMethods(); } catch (err) { toast(err.message); } } break;
+    case 'identity-unlink': try { await api(`/identities/${b.dataset.p}`, { method: 'DELETE' }); renderSigninMethods(); } catch (err) { toast(err.message); } break;
+    case 'bulk-request': bulkRequestModal(); break;
+    case 'br-all': case 'br-none': $$('#br-list label').forEach((l) => { if (!l.hidden) l.querySelector('input').checked = b.dataset.act === 'br-all'; }); S.brCount?.(); break;
+    case 'import-template': importTemplate(); break;
+    case 'import-check': importCheck(false); break;
+    case 'import-run': importCheck(true); break;
     case 'logo-remove': try { await api('/firm/logo', { method: 'DELETE' }); S.firmInfo = { ...S.firmInfo, logoUrl: null }; toast(t('Logo removed.')); firmModal(); } catch (err) { toast(err.message); } break;
     case 'bank-connect': bankConnectModal(); break;
     case 'bank-remove': if (confirm(t('Disconnect this bank? Statements already fetched stay.'))) { try { await api(`/companies/${S.route.c}/bank/${b.dataset.id}`, { method: 'DELETE' }); S.bank = null; toast(t('Bank disconnected.')); renderData(); } catch (err) { toast(err.message); } } break;
@@ -1426,7 +1654,11 @@ document.addEventListener('click', async (e) => {
       break;
   }
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.route.i) go(S.route.c); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.route.i) go(S.route.c); return; }
+  // ← → move between documents while one is open (not while typing)
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.route.i && $('#modal').hidden && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) stepItem(e.key === 'ArrowLeft' ? -1 : 1);
+});
 
 // keep the view current: other people act in the same workspace
 document.addEventListener('input', (e) => {
@@ -1481,6 +1713,8 @@ setInterval(poll, 20000);
     if (/[?&]bank=failed/.test(location.hash)) setTimeout(() => toast(t('The bank did not grant access. You can try again.')), 800);
     if (me.user.mfa?.pending) return renderMfaCode();
     if (me.user.mfa?.setupRequired) return renderMfaSetupRequired();
+    const lk = /^#\/\?linked=(google|microsoft)$/.exec(location.hash);
+    if (lk) { history.replaceState(null, '', '#/'); toast(t('{provider} account linked. You can now sign in with it.', { provider: lk[1] === 'google' ? 'Google' : 'Microsoft' })); }
     if (location.hash.startsWith('#/billing')) { if (location.hash === '#/billing/done') toast(t('Thank you. Your subscription is being activated.')); history.replaceState(null, '', '#/'); }
     if (S.firmInfo) TZ = COUNTRY(S.firmInfo.country).tz;
     renderShell();
