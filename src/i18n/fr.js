@@ -1,5 +1,11 @@
 // French email texts (keys are the English originals).
 export default {
+  'New sign-in to your Pescada account': 'Nouvelle connexion à votre compte Pescada',
+  'Your account ({email}) was signed in on {time} from {device}, IP address {ip}.': 'Une connexion à votre compte ({email}) a eu lieu le {time} depuis {device}, adresse IP {ip}.',
+  'If this was you, there is nothing to do.': 'Si c’était vous, vous n’avez rien à faire.',
+  'If it was not you, sign out everywhere with the button below, then write to hello@pescada.io.': 'Si ce n’était pas vous, déconnectez-vous partout avec le bouton ci-dessous, puis écrivez à hello@pescada.io.',
+  'Sign out everywhere': 'Se déconnecter partout',
+  'Pescada. We send this when your account is used on a browser or device for the first time.': 'Pescada. Nous envoyons ce message lorsque votre compte est utilisé pour la première fois sur un navigateur ou un appareil.',
   'Sent with Pescada, tracked document exchange for accounting firms.': 'Envoyé avec Pescada, l’échange de documents tracé pour les cabinets comptables.',
   'This address already uses Pescada': 'Cette adresse utilise déjà Pescada',
   'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Quelqu’un, sans doute vous, a demandé à ouvrir un cabinet sur Pescada avec {email}. Cette adresse reçoit déjà des documents d’un cabinet en tant que client, elle ne peut donc pas servir à ouvrir un cabinet.',

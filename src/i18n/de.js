@@ -1,5 +1,11 @@
 // German email texts (keys are the English originals).
 export default {
+  'New sign-in to your Pescada account': 'Neue Anmeldung bei Ihrem Pescada-Konto',
+  'Your account ({email}) was signed in on {time} from {device}, IP address {ip}.': 'Bei Ihrem Konto ({email}) gab es am {time} eine Anmeldung von {device}, IP-Adresse {ip}.',
+  'If this was you, there is nothing to do.': 'Wenn Sie das waren, ist nichts zu tun.',
+  'If it was not you, sign out everywhere with the button below, then write to hello@pescada.io.': 'Wenn Sie es nicht waren, melden Sie sich mit der Schaltfläche unten überall ab und schreiben Sie dann an hello@pescada.io.',
+  'Sign out everywhere': 'Überall abmelden',
+  'Pescada. We send this when your account is used on a browser or device for the first time.': 'Pescada. Wir senden diese Nachricht, wenn Ihr Konto zum ersten Mal in einem Browser oder auf einem Gerät verwendet wird.',
   'Sent with Pescada, tracked document exchange for accounting firms.': 'Gesendet mit Pescada, dem nachvollziehbaren Dokumentenaustausch für Kanzleien.',
   'This address already uses Pescada': 'Diese Adresse nutzt Pescada bereits',
   'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Jemand, wahrscheinlich Sie, wollte mit {email} eine Kanzlei auf Pescada eröffnen. Diese Adresse erhält bereits als Mandant Dokumente von einer Kanzlei, daher kann mit ihr keine Kanzlei eröffnet werden.',

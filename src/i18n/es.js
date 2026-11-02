@@ -1,5 +1,11 @@
 // Spanish email texts (keys are the English originals).
 export default {
+  'New sign-in to your Pescada account': 'Nuevo acceso a tu cuenta de Pescada',
+  'Your account ({email}) was signed in on {time} from {device}, IP address {ip}.': 'Se accedió a tu cuenta ({email}) el {time} desde {device}, dirección IP {ip}.',
+  'If this was you, there is nothing to do.': 'Si fuiste tú, no tienes que hacer nada.',
+  'If it was not you, sign out everywhere with the button below, then write to hello@pescada.io.': 'Si no fuiste tú, cierra la sesión en todos los dispositivos con el botón de abajo y escribe a hello@pescada.io.',
+  'Sign out everywhere': 'Cerrar sesión en todos los dispositivos',
+  'Pescada. We send this when your account is used on a browser or device for the first time.': 'Pescada. Te enviamos este mensaje cuando tu cuenta se usa por primera vez en un navegador o dispositivo.',
   'Sent with Pescada, tracked document exchange for accounting firms.': 'Enviado con Pescada, intercambio de documentos con trazabilidad para asesorías.',
   'This address already uses Pescada': 'Esta dirección ya usa Pescada',
   'Someone, probably you, asked to open an accounting firm on Pescada with {email}. This address already receives documents from an accounting firm as a client, so a firm cannot be opened with it.': 'Alguien, probablemente tú, ha pedido abrir una asesoría en Pescada con {email}. Esta dirección ya recibe documentos de una asesoría como cliente, así que no se puede abrir un despacho con ella.',
