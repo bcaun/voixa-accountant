@@ -54,6 +54,8 @@ export default {
   'Attach and send': 'Anhängen und senden',
   'Attach the report file.': 'Hängen Sie die Datei der Auswertung an.',
   'Automatic': 'Automatisch',
+  'business account': 'Geschäftskonto',
+  'personal account': 'Privatkonto',
   'Automatic bank statements': 'Automatische Kontoauszüge',
   'Average per file': 'Durchschnitt pro Datei',
   'Back': 'Zurück',

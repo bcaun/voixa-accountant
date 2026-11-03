@@ -1362,13 +1362,14 @@ function bankFeedsBlock() {
       <button class="btn small" data-act="bank-remove" data-id="${c.id}">${t('Disconnect')}</button></div>`).join('')}
     <div><button class="btn small" data-act="bank-connect">${t('Connect a bank account')}</button></div></section>`;
 }
+const bankOption = (i) => `<option value="${esc(i.id)}">${esc(i.name)}${i.kind ? ` (${i.kind === 'business' ? t('business account') : t('personal account')})` : ''}</option>`;
 async function bankConnectModal() {
   openModal(`${modalHead(t('Connect a bank account'))}<div class="modal-b"><p class="loading">${t('Loading the banks…')}</p></div>`);
   try {
     const r = await api(`/companies/${S.route.c}/bank/institutions`);
     $('#modal .modal-b').innerHTML = `<form id="bankForm" novalidate style="display:grid;gap:12px">
       <div class="field"><label for="bk-q">${t('Find your bank')}</label><input id="bk-q" class="input" type="search" placeholder="${esc(t('Type the bank’s name'))}"></div>
-      <div class="field"><label for="bk-id">${t('Bank')}</label><select id="bk-id" class="input" size="8" style="height:auto;padding:8px">${r.institutions.map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="bk-id">${t('Bank')}</label><select id="bk-id" class="input" size="8" style="height:auto;padding:8px">${r.institutions.map(bankOption).join('')}</select></div>
       <p class="sub" style="font-size:13px">${t('You will sign in at your bank to allow read-only access. Pescada never sees your banking password.')}</p>
       <p class="err" id="bkErr" hidden></p><div class="dr-actions"><button class="btn primary" type="submit">${t('Continue to the bank')}</button></div></form>`;
     S.banks = r.institutions;
@@ -1795,7 +1796,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('input', (e) => {
   const key = e.target.closest?.('.tools')?.dataset.key;
   if (key && e.target.dataset.filter) { filtState(key)[e.target.dataset.filter] = e.target.value; redrawList(key); }
-  if (e.target.id === 'bk-q') { const q = e.target.value.toLowerCase(); $('#bk-id').innerHTML = (S.banks || []).filter((i) => i.name.toLowerCase().includes(q)).map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join(''); }
+  if (e.target.id === 'bk-q') { const q = e.target.value.toLowerCase(); $('#bk-id').innerHTML = (S.banks || []).filter((i) => i.name.toLowerCase().includes(q)).map(bankOption).join(''); }
   if (e.target.id === 'sq') { clearTimeout(S.sqT); S.sqT = setTimeout(() => runSearch(e.target.value), 250); }
 });
 document.addEventListener('change', (e) => {

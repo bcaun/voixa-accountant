@@ -102,7 +102,14 @@ export const config = {
       authUrl: env.MICROSOFT_AUTH_URL || '', tokenUrl: env.MICROSOFT_TOKEN_URL || '' },
   },
 
-  // bank statements through open banking (GoCardless Bank Account Data); off without keys
+  // bank statements through open banking: Enable Banking when its application id and key are set,
+  // otherwise GoCardless Bank Account Data; off without either
+  enableBanking: {
+    appId: env.ENABLE_BANKING_APP_ID || '',
+    keyFile: env.ENABLE_BANKING_KEY_FILE || (env.ENABLE_BANKING_APP_ID ? '/app/secrets/enablebanking.pem' : ''),
+    privateKey: (env.ENABLE_BANKING_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    apiBase: env.ENABLE_BANKING_API_BASE || 'https://api.enablebanking.com',
+  },
   bankFeeds: {
     secretId: env.GOCARDLESS_SECRET_ID || '',
     secretKey: env.GOCARDLESS_SECRET_KEY || '',

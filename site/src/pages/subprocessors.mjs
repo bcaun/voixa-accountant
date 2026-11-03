@@ -18,7 +18,7 @@ ${table(['Provider', 'What for', 'Data', 'Where', 'Safeguard'], [
 <h2>Announced: from 1 December 2026</h2>
 <p>Two providers are added for features that customers can choose to use. They process data only when the feature is used.</p>
 ${table(['Provider', 'What for', 'Data', 'Where', 'Safeguard'], [
-  ['GoCardless Ltd (Bank Account Data)', 'Fetching bank statements through open banking, when a client connects a bank account', 'Account details and movements of the connected account', 'European Union and United Kingdom', 'Licensed account information service provider; UK adequacy decision'],
+  ['Enable Banking Oy', 'Fetching bank statements through open banking, when a client connects a bank account', 'Account details and movements of the connected account', 'Finland (EU)', 'Account information service provider authorised by the Finnish Financial Supervisory Authority; within the EU'],
   ['Stripe Payments Europe, Ltd.', 'Payment of the Pescada subscription by firms that subscribe online', 'Firm’s billing contact, billing address and tax ID; card data goes to Stripe directly, never to Pescada', 'Ireland (EU), with transfers to the United States', 'Data Privacy Framework and Standard Contractual Clauses'],
 ])}
 <p>Bank files in Norma 43, camt.053 and CSV format are read on our own server and are never sent to Anthropic. A customer can ask us to switch AI reading off for its account.</p>
@@ -40,7 +40,7 @@ ${table(['Proveedor', 'Para qué', 'Datos', 'Dónde', 'Garantía'], [
 <h2>Anunciados: a partir del 1 de diciembre de 2026</h2>
 <p>Se añaden dos proveedores para funciones que cada cliente decide usar. Solo tratan datos cuando se usa la función.</p>
 ${table(['Proveedor', 'Para qué', 'Datos', 'Dónde', 'Garantía'], [
-  ['GoCardless Ltd (Bank Account Data)', 'Obtención de extractos por banca abierta, cuando un cliente conecta una cuenta', 'Datos y movimientos de la cuenta conectada', 'Unión Europea y Reino Unido', 'Proveedor de servicios de información sobre cuentas autorizado; decisión de adecuación del Reino Unido'],
+  ['Enable Banking Oy', 'Obtención de extractos por banca abierta, cuando un cliente conecta una cuenta', 'Datos y movimientos de la cuenta conectada', 'Finlandia (UE)', 'Proveedor de servicios de información sobre cuentas autorizado por la autoridad financiera de Finlandia; dentro de la UE'],
   ['Stripe Payments Europe, Ltd.', 'Pago de la suscripción a Pescada por las asesorías que se suscriben en línea', 'Contacto, dirección y NIF de facturación de la asesoría; los datos de la tarjeta van directamente a Stripe, nunca a Pescada', 'Irlanda (UE), con transferencias a EE. UU.', 'Marco de Privacidad de Datos y Cláusulas Contractuales Tipo'],
 ])}
 <p>Los ficheros bancarios en formato Norma 43, camt.053 y CSV se leen en nuestro propio servidor y nunca se envían a Anthropic. Un cliente puede pedirnos que desactivemos la lectura con IA en su cuenta.</p>

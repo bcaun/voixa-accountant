@@ -54,6 +54,8 @@ export default {
   'Attach and send': 'Allega e invia',
   'Attach the report file.': 'Allega il file del report.',
   'Automatic': 'Automatica',
+  'business account': 'conto aziendale',
+  'personal account': 'conto personale',
   'Automatic bank statements': 'Estratti conto automatici',
   'Average per file': 'Media per file',
   'Back': 'Indietro',

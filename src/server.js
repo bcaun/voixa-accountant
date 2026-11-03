@@ -101,7 +101,7 @@ export function createApp() {
 
   // The bank sends the client back here after they authorised access
   app.get('/bank/callback', async (req, res) => {
-    const r = await finishBank(String(req.query.ref || '')).catch((err) => { console.error('bank callback', err.message); return null; });
+    const r = await finishBank({ ref: req.query.ref, state: req.query.state, code: req.query.code, error: req.query.error }).catch((err) => { console.error('bank callback', err.message); return null; });
     res.redirect(303, r ? `/#/c/${r.companyId}?bank=${r.ok ? 'ok' : 'failed'}` : '/');
   });
 

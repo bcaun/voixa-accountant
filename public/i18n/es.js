@@ -54,6 +54,8 @@ export default {
   'Attach and send': 'Adjuntar y enviar',
   'Attach the report file.': 'Adjunta el archivo del informe.',
   'Automatic': 'Automático',
+  'business account': 'cuenta de empresa',
+  'personal account': 'cuenta personal',
   'Automatic bank statements': 'Extractos bancarios automáticos',
   'Average per file': 'Media por archivo',
   'Back': 'Volver',

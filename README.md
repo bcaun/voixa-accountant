@@ -126,7 +126,9 @@ exports, the append-only guard and detection of a tampered log.
   Sign-up creates nothing until the emailed link is opened; a hidden field, a minimum fill time, a list of
   throwaway mail domains and per-IP/per-address limits stop robots. `SIGNUP_DAILY_MAX` (20) caps requests per day,
   `TRIAL_MAX_CLIENTS` (10) and `TRIAL_MAX_INVITES` (20 a day) limit trial firms, and `SIGNUP_NOTIFY_EMAIL` is told of each new firm.
-- **Bank feeds:** `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`, `BANK_FEED_SYNC_HOURS` (default 12).
+- **Bank feeds:** Enable Banking with `ENABLE_BANKING_APP_ID` and the application's private key in `deploy/secrets/enablebanking.pem`
+  (or `ENABLE_BANKING_KEY_FILE` / `ENABLE_BANKING_PRIVATE_KEY`); otherwise GoCardless with `GOCARDLESS_SECRET_ID`,
+  `GOCARDLESS_SECRET_KEY`. `BANK_FEED_SYNC_HOURS` (default 12). Existing connections keep their provider.
 - **Sign-in:** besides email links, passkeys (WebAuthn, no setup; they count as two-step sign-in) and Google /
   Microsoft (OpenID Connect) when `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` or `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`
   are set (redirect URIs `/auth/oauth/google/callback`, `/auth/oauth/microsoft/callback`; `MICROSOFT_TENANT` defaults to

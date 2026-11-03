@@ -31,7 +31,8 @@ services:
       PORT: "3000"
       STORAGE_DIR: /app/data/files
       CLAMAV_HOST: clamav
-    volumes: [files:/app/data/files]
+    # deploy/secrets holds key files (e.g. enablebanking.pem), read-only inside the container
+    volumes: [files:/app/data/files, ./secrets:/app/secrets:ro]
     expose: ["3000"]
 
   # Virus scanner. Loads its signatures at start (uses about 1.5 GB of memory) and updates them
