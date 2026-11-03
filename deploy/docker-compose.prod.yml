@@ -38,7 +38,7 @@ services:
   # Virus scanner. Loads its signatures at start (uses about 1.5 GB of memory) and updates them
   # every few hours. While it is starting or down, uploads are accepted and scanned later.
   clamav:
-    image: clamav/clamav:1.4
+    image: clamav/clamav:1.5
     restart: unless-stopped
     volumes: [clamav:/var/lib/clamav]
     expose: ["3310"]
