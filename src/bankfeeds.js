@@ -256,7 +256,9 @@ export async function syncConnection(id, now = new Date()) {
     await tx(async (c) => {
       await lockCompany(c, conn.company_id);
       const { rows: [company] } = await c.query(`${COMPANY_SQL} where c.id = $1`, [conn.company_id]);
-      const { rows: [user] } = await c.query('select * from users where id = $1', [conn.created_by]);
+      const { rows: [who] } = await c.query('select * from users where id = $1', [conn.created_by]);
+      // the statement comes in on the client's side, from the bank, whoever connected it (client or accountant)
+      const user = { ...who, role: 'client', name: `${conn.institution_name} · open banking` };
       await createDocument(c, { user, company, file, category: 'Bank statement', period: (doc.period_end || '').slice(0, 7),
         note: `Fetched automatically from ${conn.institution_name} through open banking (${fresh.length} new movement${fresh.length === 1 ? '' : 's'})`, requestId: null });
       for (const t of doc.transactions) await c.query('insert into bank_feed_seen (connection_id, tx_id) values ($1,$2) on conflict do nothing', [conn.id, t.id]);

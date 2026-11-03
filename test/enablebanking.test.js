@@ -104,7 +104,8 @@ test('banks are listed, business and personal access apart, and the client is se
   assert.equal((await ctx.cl('GET', '/me')).features.bankFeeds, true);
   const { institutions } = await ctx.cl('GET', `/companies/${ctx.co}/bank/institutions`);
   assert.deepEqual(institutions.map((i) => [i.id, i.kind]), [['personal:Abanca', undefined], ['business:CaixaBank', 'business'], ['personal:CaixaBank', 'personal']]);
-  const r = await ctx.cl('POST', `/companies/${ctx.co}/bank/connect`, { institutionId: 'business:CaixaBank' });
+  // the accountant connects the bank this time (the GoCardless test has the client do it)
+  const r = await ctx.acc('POST', `/companies/${ctx.co}/bank/connect`, { institutionId: 'business:CaixaBank' });
   assert.equal(r.url, 'https://bank.test/auth/eb1');
   assert.deepEqual([seen.auth.aspsp, seen.auth.psu_type, seen.auth.redirect_url, seen.auth.language], [{ name: 'CaixaBank', country: 'ES' }, 'business', 'http://localhost/bank/callback', 'es']);
   assert.ok(new Date(seen.auth.access.valid_until) - Date.now() <= 90 * 864e5);
@@ -133,7 +134,10 @@ test('back from the bank with a code: the account is linked and booked movements
   const t = rec.transactions.map((x) => [x.amount, x.counterparty_name]).sort((a, b) => a[0] - b[0]);
   assert.deepEqual(t, [[-1210, 'MAKRO AUTOSERVICIO'], [2420, 'HOTEL BRISA SL']], 'debits negative, pending left out');
   const ws = await ctx.acc('GET', `/companies/${ctx.co}`);
-  assert.match(ws.items.find((i) => i.category === 'Bank statement').versions[0].file_name, /^CaixaBank …5766 2026-10-03 to 2026-10-07\.json$/);
+  const st = ws.items.find((i) => i.category === 'Bank statement');
+  assert.match(st.versions[0].file_name, /^CaixaBank …5766 2026-10-03 to 2026-10-07\.json$/);
+  assert.equal(st.kind, 'doc', 'on the client side');
+  assert.ok(ws.events.some((e) => /^CaixaBank · open banking uploaded/.test(e.text)), 'the log names the bank');
   assert.equal(await syncAll(new Date(Date.now() + 13 * 36e5)), 0, 'nothing twice');
 });
 
