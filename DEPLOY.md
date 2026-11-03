@@ -237,6 +237,8 @@ PT → португальский, остальные → английский. 
 3. `deploy/.env`: `ENABLE_BANKING_APP_ID=<Application ID из Control Panel>`, затем `bash deploy/update.sh`.
 4. Проверка в Sandbox: в пространстве клиента «Подключить банк» → тестовый банк → вход тестовыми данными,
    которые показывает Enable Banking. Через минуту появляется выписка.
+   Не ждать 12 часов: `docker compose -f deploy/docker-compose.prod.yml exec app node src/cli.js sync-banks`.
+   При первом подключении забираются движения за 90 дней, потом — новые (с запасом в 5 дней).
 5. Для реальных банков: в Control Panel активировать приложение в Production (проверка компании и договор),
    записать новый Application ID и ключ так же, как в пунктах 2–3.
 

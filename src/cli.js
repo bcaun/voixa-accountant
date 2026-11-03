@@ -2,6 +2,7 @@
 // npm run create-accountant -- --email elena@voixa.es --name "Elena Ruiz" [--firm "Voixa Accounting"]
 // npm run login-link -- --email elena@voixa.es      (prints a one-time sign-in link)
 // node src/cli.js list-firms
+// node src/cli.js sync-banks      (fetch new movements of every connected bank now, without waiting for the schedule)
 // node src/cli.js set-tier --firm "Studio Rossi" --tier pro      (essential | pro: Pro adds AI reading, bank feeds, email-in, exports)
 import { parseArgs } from 'node:util';
 import { pool } from './db.js';
@@ -69,6 +70,14 @@ try {
     const f = await findFirm(values.firm || '');
     await pool.query('update firms set tier = $2 where id = $1', [f.id, values.tier]);
     console.log(`${f.name}: plan ${values.tier === 'pro' ? 'Pro (AI reading, bank feeds, email-in, exports)' : 'Essential'}`);
+  } else if (cmd === 'sync-banks') {
+    const { syncConnection } = await import('./bankfeeds.js');
+    const { rows } = await pool.query(`select b.id, b.institution_name, c.name from bank_connections b join companies c on c.id = b.company_id where b.status = 'linked' order by b.created_at`);
+    for (const r of rows) {
+      try { console.log(`${r.name} · ${r.institution_name}: ${await syncConnection(r.id)} new statement(s)`); } catch (err) { console.log(`${r.name} · ${r.institution_name}: ${err.message}`); }
+    }
+    if (!rows.length) console.log('No connected banks.');
+    await (await import('./recognition/recognize.js')).processJobs(); // read the new statements before closing
   } else if (cmd === 'list-firms') {
     const { rows } = await pool.query(`select f.*, (select count(*) from companies c where c.firm_id = f.id)::int as clients,
       (select count(*) from users u where u.firm_id = f.id)::int as accountants from firms f order by created_at`);
@@ -97,7 +106,7 @@ try {
       if (!u) throw new Error(`No user ${email}`);
       console.log(await createLoginLink(u.id));
     } else {
-      throw new Error('Commands: create-firm, list-firms, set-tier, create-accountant, login-link, verify-all, timestamp-now, verify-timestamps');
+      throw new Error('Commands: create-firm, list-firms, set-tier, sync-banks, create-accountant, login-link, verify-all, timestamp-now, verify-timestamps');
     }
   }
 } catch (err) {
